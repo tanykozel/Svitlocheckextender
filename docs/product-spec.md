@@ -1,190 +1,182 @@
-# Product spec: advance outage alerts for Svitlochek users
+# Product spec: «Лампочка Люся 💡», advance outage alerts for Zhytomyr oblast
 
 | | |
 |---|---|
-| Status | v0.1 implemented (MVP); live API not yet verified from a Ukrainian network |
+| Product | Telegram bot, display name «Світло Житомир 💡 Графік відключень»; target username **@svitlo_lusia_zt_bot** |
+| Status | **v0.3 live** (GitHub Actions, public repo). Real-scenario UAT on 2026-10-13. v0.4 (Cloudflare) planned. |
 | Owner | Tetiana Kozel |
+| How it was built | Product decisions, requirements and testing by the owner; design and code produced with an AI assistant (Claude Code) |
 | Last updated | 2026-10-13 |
 
 ## 1. Problem statement
+Households in Zhytomyr oblast check the official **Svitlochek** app (Zhytomyroblenergo) for their hourly outage
+schedule. The app shows the schedule **only when opened**. It does not warn that power will go off or come back
+soon, and it doesn't say when the schedule changes. People miss the window to charge devices, finish a wash or
+start cooking, and keep re-opening the app.
 
-Households in Zhytomyr oblast check the official **Svitlochek** app (Zhytomyroblenergo) to see
-their hourly outage schedule. The app shows the schedule **only when opened**. It does not notify
-users that power will go off soon or come back, and it does not tell them when the schedule changes.
-People therefore miss the window to charge devices, finish a wash or start cooking, and they keep
-re-opening the app to check for changes.
-
-**Hypothesis:** if users get a push notification ~30 minutes before each scheduled change, and
-whenever the schedule is published or changed, they will stop polling the app manually and
-will be ready for each outage more often.
+**Hypothesis:** if users get a push alert before each scheduled change (with how long it lasts), and whenever
+the schedule is published or changed, they will stop checking the app manually and be ready more often.
 
 ## 2. Users
-
 | Persona | Need |
 |---|---|
-| Household member (primary) | "Tell me 30 min before light goes off or comes back, without me opening an app." |
-| Remote family member | Gets alerts for parents' address without living there (multiple labels/instances). |
-| Small business / home office | Plans work around outages; cares about schedule **changes** most. |
+| Household member (primary) | "Warn me before the light goes off or comes back, without opening an app." |
+| Friend / neighbour of the owner | Joins through a shared link, with no setup and no registration. |
+| Remote family member | Watches parents' address. *(Today: one address per person; see Q2.)* |
+| Small business / home office | Plans work around outages; cares most about schedule **changes**. |
 
 ## 3. Scope
+| Version | In scope |
+|---|---|
+| v0.1 MVP | One queue per instance; alerts off / possible off / on; schedule published/changed; ntfy and/or Telegram; queue lookup |
+| v0.2 | Shared bot: friends subscribe themselves through an address quiz |
+| v0.3 (current) | One address per person + change; warning time 15/30/60; outage length and `/schedule`; queue-move detection; most-recent-request-wins; unknown-input reply; typed answers at every step; persona Люся; encryption; bot-switch safety |
+| v0.4 (next) | Move to Cloudflare Workers: instant replies, punctual alerts, durable storage (see section 8) |
 
-**In scope (MVP):** one address (queue) per running instance; push via ntfy and/or Telegram;
-alerts for off / possible off / on; "schedule published / changed" alerts; address-to-queue lookup;
-no ZTOE account.
-
-**In scope (v0.2):** friends subscribe themselves through an address quiz in the shared bot.
-
-**Out of scope (not now):** a mobile app UI; instant (sub-second) bot replies; emergency (unscheduled) outage
-detection; other oblenergos; payments or meter readings.
+**Out of scope (now):** mobile app UI; emergency (unscheduled) outage detection; other oblenergos; meter readings
+or payments; several addresses per person (Q2).
 
 ## 4. User stories and acceptance criteria
 
-**US-1 Find my queue**
-As a household member, I want to find my черга/підчерга by address so that alerts match my house.
-- *Given* I run `lookup` and drill down district → city → street, *when* I list addresses,
-  *then* each house shows its queue as `черга X.Y`.
+**US-1 Find my queue** (Must). As a household member, I want to find my черга/підчерга by address so that alerts match my house.
+- *Given* I drill down district → city → street (CLI `lookup` or Actions → Find my queue), *then* each house shows `черга X.Y`.
 
 **US-2 Warning before power goes off** (Must)
-As a household member, I want a push N minutes before a scheduled outage so that I can prepare.
-- *Given* lead = 30 min and an outage at 08:00, *when* the check runs at any time 07:30–07:59,
-  *then* one push says power goes off at 08:00 and until when.
-- *Given* the alert was already sent, *when* the check runs again, *then* no duplicate is sent.
-- *Given* the check runs at 07:00 or after 08:00, *then* no alert for that outage is sent.
+- *Given* a 30-minute warning and an outage at 20:00, *when* a check runs at 19:30–19:59, *then* one alert says
+  «🔴 За ~N хв, о 20:00, мене вимкнуть 😔 Без світла ~2 год, до 22:00 (за графіком).»
+- *Given* the alert was already sent, *then* no duplicate. *Given* the check runs before 19:30 or after 20:00, *then* no alert.
 
 **US-3 Warning before power comes back** (Must)
-- *Given* an outage ends at 12:00, *when* the check runs 11:30–11:59, *then* one push says power returns at 12:00.
+- *Given* an outage ends at 22:00, *when* a check runs 21:30–21:59, *then* one alert says «🟢 Я повертаюся! … о 22:00 …».
 
 **US-4 Possible outages** (Should)
-- *Given* a yellow ("можливе") slot, *then* a 🟡 alert is sent, unless the user set `--no-possible`.
-- *Given* outage → possible → available, *then* no "possible off" alert is sent mid-outage.
+- *Given* a yellow slot, *then* a 🟡 alert is sent (CLI: unless `--no-possible`).
+- *Given* outage → possible → available, *then* no "possible" alert is sent in the middle of an outage.
 
 **US-5 Schedule published or changed** (Should)
-- *Given* the first run, *then* the current schedule is stored as a baseline and no alert is sent.
-- *Given* tomorrow's schedule appears, *then* one "📅 Графік на DD.MM опубліковано" push lists its outage windows.
-- *Given* an existing day's schedule changes, *then* one "змінено" push lists the new windows,
-  and upcoming off/on alerts follow the new times.
+- *Given* the first run, *then* the schedule is stored as a baseline and no alert is sent.
+- *Given* tomorrow's schedule appears, *then* one «📅 З'явився графік на DD.MM:» alert lists windows, durations and the total.
+- *Given* a day's schedule changes, *then* one «📅 Графік на DD.MM змінився:» alert, and upcoming alerts follow the new times.
 
-**US-6 Choose channel** (Must)
-- *Given* `NTFY_TOPIC` is set, *then* alerts arrive as phone push via the ntfy app, with no account needed.
-- *Given* Telegram bot credentials are set, *then* alerts also arrive in Telegram.
-- *Given* neither is set, *then* the run stops with a clear configuration error.
+**US-6 Delivery channels** (Must)
+- The shared bot delivers via Telegram. The CLI `check` can also deliver via ntfy (no account); with neither configured it stops with a clear error.
 
-**US-7 Friend joins through an address quiz** (Should, v0.2)
+**US-7 Join through the address quiz** (Must)
 As a friend of the owner, I want to pick my address in the bot so that I get alerts without any setup.
-- *Given* I send /start, *then* I get district buttons (step 1/4).
-- *Given* I pick a district, *then* towns are offered as buttons and villages can be typed (2/4).
-- *Given* I type a name, *then* an exact match is chosen; several partial matches are offered as buttons;
-  none means "not found, try again".
-- *Given* a street with ≤ 30 options, *then* streets are buttons; otherwise I type it (3/4).
-- *Given* the whole street is in one queue, *then* the house question is skipped; otherwise I type the number (4/4).
-- *Then* the bot confirms "✅ Готово! <address>: черга X.Y", and I receive alerts for that queue.
-- *Given* I send /stop or block the bot, *then* I stop receiving alerts.
-- Replies arrive on the next tick (≤ ~10 min). *Given* a lookup error, *then* I'm asked to retry later.
+- *Given* /start (Menu → «Обрати адресу») and no subscription, *then* Люся greets me and shows district buttons (1/4).
+- Every step (district, town/village, street, house) accepts **buttons or typed text**. Districts may be typed with or
+  without «район», «р-н» or «РЕМ». Towns are offered as buttons; villages are typed.
+- An exact name wins; several partial matches are offered as buttons; too many asks to be more specific.
+- *Given* a typed answer that isn't found, *then* «Не знайшла такий район / населений пункт / таку вулицю / будинок …
+  🤔 Перевір написання і спробуй ще раз.», and the step keeps waiting.
+- *Given* the whole street is one queue, *then* the house question is skipped.
+- *Then* «✅ Готово! <address>: черга X.Y. Тепер я попереджатиму тебе за 30 хв…».
+- *Given* /stop or blocking the bot, *then* alerts stop. *Given* a lookup error, *then* «Ой, щось пішло не так… Спробуй /start трохи пізніше.»
 
-**US-8 One address per person, and changing it** (Must, v0.3)
-- *Given* I'm subscribed and send /start, *then* the bot only shows my address and points to «Змінити адресу» in the menu.
-  It does **not** ask a question: changing the address is always the user's own choice (changed after live testing, 2026-10-13).
-- *Given* I send /change (or tap "Змінити адресу") and finish the quiz, *then* the new address **replaces** the old one
-  ("✅ Адресу змінено"), my warning time is kept, and alerts restart for the new queue.
-- A chat never has more than one address.
+**US-8 One address per person, and changing it** (Must)
+- *Given* I'm subscribed and send /start, *then* Люся **only** reminds me: «Я вже стежу за твоєю адресою: … (черга X.Y) 💡
+  Щоб змінити її, обери «Змінити адресу» в меню ☰.» There's **no question and no buttons**; changing the address is the
+  user's own choice. *(Changed after live testing; older Змінити/Залишити buttons are removed.)*
+- *Given* /change (Menu → «Змінити адресу») and a finished quiz, *then* the new address **replaces** the old one
+  («✅ Адресу змінено»), the warning time is kept, and alert history restarts for the new queue.
 
-**US-9 Warning time** (Should, v0.3)
-- *Given* I send /settings, *then* I can pick 15, 30 or 60 minutes (current one marked ✓). The default is 30.
-- *Given* 60 minutes, *then* the outage alert arrives ~50–60 minutes before the change.
+**US-9 Warning time** (Should)
+- /settings offers 15 / 30 / 60 minutes (current one ✓; default 30). With 60, the alert arrives ~50–60 minutes before.
 
-**US-10 How long and the full picture** (Must, v0.3)
-- *Given* an outage alert, *then* it states the length and end time ("Без світла ~4 год, до 12:00") and links to the
-  official schedule.
-- *Given* a power-back alert, *then* it names the next outage and how long power stays on, or says none is scheduled.
-- *Given* I send /schedule, *then* I see today's and tomorrow's windows with durations, the total hours without power,
-  and the official link.
-- Schedule published/changed alerts include durations and the total.
+**US-10 How long, and the full picture** (Must)
+- Off alerts state the length and end time and link to the official schedule.
+- Power-back alerts name the next outage («Наступного разу мене вимкнуть завтра о 06:00 - світло буде ~8 год.») or say there's none.
+- /schedule shows today and tomorrow: windows with durations, «Разом без світла», and the official link.
 
-**US-11 Address moved to another queue** (Must, v0.3)
-As a subscriber, I want the bot to notice when Zhytomyroblenergo moves my address to another queue, so that my
-alerts stay correct without me re-subscribing.
-- The bot stores *where* my queue came from (street + house), not only the queue number.
-- *Given* 6 hours have passed since the last check, *when* the bot ticks, *then* it re-reads my street
-  (one request per street, shared by all subscribers on it).
-- *Given* my house is now in another queue, *then* the bot switches to it, restarts alert history, and tells me once:
-  "⚠️ … було 3.1, тепер 4.2".
-- *Given* my house is no longer found, or my street (subscribed without a house) now has several queues, *then* the bot
-  keeps the last known queue and tells me once to check the address with /change.
-- *Given* ZTOE is unavailable, *then* nothing changes and the check is retried on the next tick.
-- Out of scope: the owner's address set through repository variables is not re-checked (use the quiz instead).
+**US-11 Address moved to another queue** (Must)
+- The bot stores where the queue came from (street + house) and re-reads each street at most every 6 h (one request per street).
+- *Given* the house moved to another queue, *then* the bot switches and says once «⚠️ … було 3.1, тепер 4.2.»
+- *Given* the house is gone, or the street splits into several queues, *then* it keeps the last queue and asks once to check via /change.
+- *Given* ZTOE is down, *then* nothing changes and it retries on the next tick. (Owner variables are not re-checked.)
 
-**US-12 Most recent request wins** (Must, v0.3; found in live testing 2026-10-13)
-As a user who taps again because the bot hasn't answered yet, I want only my latest request handled,
-so that the chat isn't flooded with duplicate replies.
-- *Given* several requests from me arrived between two runs, *then* everything before my last "start over"
-  (/start, /change, /stop, "Змінити адресу") is ignored.
-- *Given* back-to-back requests of the same kind (two /start, two district taps), *then* only the last one is answered.
-- Typed answers are not merged (a wrong spelling followed by a correction still works).
-- *Given* the bot sends new buttons, *then* the buttons on its previous message are removed, so old choices can't be tapped.
-- Every tapped button stops loading, even when its request was ignored.
+**US-12 Most recent request wins** (Must; found in live testing)
+- Of the requests that arrive between two runs, everything before the last "start over" (/start, /change, /stop) is dropped;
+  back-to-back requests of the same kind keep only the last. Typed answers are never merged.
+- New buttons remove the previous message's buttons; every tapped button stops loading.
 
-**US-13 Unknown input** (Should, v0.3; requested in live testing)
-- *Given* I send text that is neither a known command nor an expected quiz answer, *then* Люся replies:
-  «Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help.»
-- *Given* I'm in the middle of the quiz and send an unknown /command, *then* I get the same hint and the quiz keeps waiting.
-- *Given* I send a sticker, photo, voice message or file, *then* I get the same hint instead of silence.
-- Typed quiz answers are never treated as "unknown": **every** address step (district, town/village, street,
-  house) accepts typed text as well as buttons. A miss replies «Не знайшла такий район / населений пункт /
-  таку вулицю / будинок … 🤔 Перевір написання і спробуй ще раз.» and the step keeps waiting.
-- District can be typed with or without «район», «р-н» or «РЕМ».
+**US-13 Unknown input** (Should; requested in live testing)
+- Text that is neither a command nor an expected quiz answer, any unknown /command (even mid-quiz), and stickers, photos,
+  voice or files: «Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help.»
+- *Given* /start arrives together with random text, *then* each gets its own reply.
 
-## 4a. Voice & tone: persona «Лампочка Люся 💡» (decided 2026-10-13)
+**US-14 Honest status** (Must)
+- /status (Menu → «Стан за графіком») says «Зараз за графіком: …» and «(Аварійні відключення я не бачу - лише графік.)».
 
+**US-15 Owner tools** (Should)
+- Hidden `/test`: one example of each alert for my address, marked «🧪 ТЕСТ», never marking real alerts as sent.
+- Run workflow with *stay_minutes* (≤ 30): ~1-second replies, and alerts checked every minute during the session.
+- Bot switch: a new token is detected automatically; message counter and menu reset, subscriptions kept.
+
+## 4a. Voice & tone: persona «Лампочка Люся 💡»
 | Rule | Example |
 |---|---|
-| Люся speaks in the first person, as the light itself (feminine forms) | «мене вимкнуть», «знайшла», «я повертаюся» |
+| Speaks in the first person, as the light itself (feminine forms) | «мене вимкнуть», «знайшла», «я повертаюся» |
 | Informal «ти», but never assumes the user's gender | «Адресу ще не обрано» rather than «ти не обрав/обрала» |
-| Facts first (time, duration), warmth after | «За ~30 хв, о 14:00, мене вимкнуть 😔 Без світла ~4 год…» |
+| Facts first (time, duration), warmth after | «За ~30 хв, о 20:00, мене вимкнуть 😔 Без світла ~2 год…» |
 | Caring, never sarcastic: outages are stressful | «Заряди телефон і павербанк 🔋» |
 | Honest about limits | No promises about emergency outages; the source (Житомиробленерго) is always named |
-| 1–2 emoji per message, meaningful ones | 🔴 off, 🟢 on, 🟡 possible, 📅 schedule, ⚠️ change |
+| Natural Ukrainian time phrases | «о 20:00», «завтра о 06:00», «до 02:00 завтра» |
+| 1–2 meaningful emoji per message | 🔴 off · 🟢 on · 🟡 possible · 📅 schedule · ⚠️ change · 🧪 test |
 
-Display name: «Світло Житомир 💡 Графік відключень» (keywords for search); username @svitlo_lusia_zt_bot. The persona introduces herself inside the chat. Avatar: `assets/lyusya-avatar.png`.
+**Naming and brand:** a functional display name for search («Світло Житомир 💡 Графік відключень»); the persona
+introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`.
+
+**BotFather texts:**
+- About: «Я Люся 💡 Попереджаю про вимкнення і ввімкнення світла на Житомирщині, заздалегідь і з графіком.»
+- Description: «Привіт! Я Лампочка Люся 💡 Попереджу тебе: 🔴 за 15, 30 або 60 хв до вимкнення світла і скажу, скільки його
+  не буде; 🟢 коли світло повернеться; 📅 якщо графік зміниться. Дані з графіка Житомиробленерго. Без реєстрації: обери
+  адресу за 4 кроки. Тисни «Start» 👇»
 
 ## 5. Non-functional requirements
-
-**Check and notification cadence (decided):**
-
 | Item | Value |
 |---|---|
-| Schedule check / bot tick | every 10 min (GitHub Actions cron; GitHub may start runs a few minutes late) |
+| Schedule check / bot tick | every 10 min (GitHub cron); in practice GitHub sometimes skips runs for 30+ min (R4) |
 | Warning before off/on | user choice 15 / **30** / 60 min |
-| "Schedule published/changed" alert | on the next tick after ZTOE updates (≤ ~10 min) |
-| Bot reply to a message or tap | on the next tick (≤ ~10 min) |
+| Bot reply | next tick (instant during *stay_minutes* sessions; instant for everyone in v0.4) |
 | Duplicates | at most one alert per change per user |
-| Address → queue re-check | every 6 h per subscriber (US-11) |
+| Address → queue re-check | every 6 h per subscriber |
 
-
-- Timezone: all times are Europe/Kyiv, regardless of where the job runs.
-- Runs unattended every 5–10 min; one run takes < 5 s; standard library only.
-- Secrets (bot token, topic) live in env vars / repository secrets, never in code or logs.
-- Polite to ZTOE: 1 request per run, identifying User-Agent.
+- All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
+- Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 76.
 
 ## 6. Success metrics
+- ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.
+- 0 duplicate alerts per change.
+- Qualitative: users stop opening Svitlochek just to check for changes; friends recommend the bot.
 
-- ≥ 95% of scheduled transitions produce an alert at least 15 minutes before the change.
-- 0 duplicate alerts per transition.
-- Qualitative: the user no longer opens Svitlochek just to check for changes.
-
-## 7. Risks, assumptions, open questions
-
-| # | Item | Type | Mitigation / next step |
+## 7. Risks, assumptions, decisions
+| # | Item | Status | Mitigation / note |
 |---|---|---|---|
-| R1 | ZTOE endpoints are undocumented and may change | Risk | Isolated in `api.py`; contract taken from SvitloYE (MIT). Ask ZTOE about an official feed. |
-| R2 | Live API not yet tested: the build environment cannot reach ztoe.com.ua | Risk | First run `status` from a Ukrainian network and compare with Svitlochek. |
-| R3 | ztoe.com.ua may block non-Ukrainian IPs (GitHub Actions) | Risk | Run on a home PC / Raspberry Pi / UA VPS. |
-| R4 | GitHub scheduled runs can be delayed | Risk | Lead ≥ 30 min; state ensures late runs still alert once. |
-| R5 | Emergency outages are not in the schedule | Limitation | Out of scope. A future option is a "power sensor" approach like SvitloBot. |
-| A1 | Slot colours: red = outage, yellow = possible, white/green = power | Assumption | Verify against the live API (R2). |
-| Q1 | Is bezsvitla.com.ua a better or extra source? | Open | Third-party aggregator; could not be reviewed from the build environment. Keep ZTOE as the primary source. |
-| D1 | Final bot: @svitlo_lusia_zt_bot (decided 2026-10-13). Switching tokens keeps subscriptions | Decision | Bot change is detected automatically (message counter + menu reset). |
-| Q2 | Several addresses per person (home + parents)? | Open | v0.3 candidate. |
-| R6 | Private repo: ~4,300 Actions min/month vs 2,000 free | Risk | Make the repo public (code has no secrets), or move the bot to an always-on free host. |
-| R8 | Public repo: logs are public and fork PRs could read the cache | Mitigated | State encrypted with SVITLO_STATE_KEY; chat ids never logged; fork PR workflows need owner approval. |
-| R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Risk | Acceptable for a few friends. Move to a durable store if usage grows. |
-| R5b | Live API verified from GitHub runners on 2026-10-13 (districts, villages, streets) | Resolved | R2/R3 closed. |
+| R1 | ZTOE endpoints are undocumented and may change | Open | Isolated in `api.py`; contract from SvitloYE (MIT). Ask ZTOE about an official feed. |
+| R2/R3 | Live API reachable from GitHub runners | **Resolved** | Verified 2026-10-13: districts, villages, streets and the live schedule for queue 1.2. |
+| R4 | GitHub's scheduler is best-effort: runs skipped for 30–45+ min | **Open (high)** | Short term: *stay_minutes* sessions and an external trigger (cron-job.org, $0). Long term: v0.4 Cloudflare. |
+| R5 | Emergency outages are not in the schedule | Limitation | Stated honestly in /help and /status. A home "power sensor" (SvitloBot-style) is a future epic. |
+| R6 | Private repo would exceed free Actions minutes | **Resolved** | Repository made public (no secrets in code or history). |
+| R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Open (low) | Fine while the bot runs; v0.4 moves to durable storage. |
+| R8 | Public repo: logs public; fork PRs could read the cache | **Mitigated** | Encryption, no chat ids in logs, approval required for outside PR workflows. |
+| A1 | Slot colours: red = outage, yellow = possible, white/green = power | Partly verified | Live data shows white/red as expected; yellow not yet seen. |
+| D1 | Final username @svitlo_lusia_zt_bot | Decided, **switch pending** | The running token still belongs to the first bot (renamed). Switching = put the new bot's token in `TELEGRAM_BOT_TOKEN`; subscriptions are kept automatically. |
+| D2 | Persona «Лампочка Люся» with a functional display name | Decided | Section 4a. |
+| D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
+| Q1 | bezsvitla.com.ua as an extra source? | Open | Third-party aggregator; ZTOE stays primary. |
+| Q2 | Several addresses per person (home + parents)? | Open | Candidate after v0.4. |
+
+## 8. Roadmap
+| When | Item |
+|---|---|
+| Now | Real-scenario UAT on the live schedule (queue 1.2: off 20:00, on 22:00, 2026-10-13); token switch to @svitlo_lusia_zt_bot |
+| Next (v0.4) | **Cloudflare Workers**: Telegram webhook (≈1 s replies), cron every minute (punctual alerts), D1/KV storage. $0 on the free plan. |
+| Later | Send Люся's sticker with each alert · several addresses per person (Q2) · sticker pack publishing · home power sensor epic |
+
+## 9. Release history (2026-10-13)
+| Version | Highlights |
+|---|---|
+| v0.1 | CLI alerts for one queue (ntfy/Telegram), lookup, tests, spec |
+| v0.2 | Shared bot with address quiz; GitHub Actions ticks; stay-awake sessions |
+| v0.3 | One address + change; 15/30/60 warnings; durations and /schedule; queue-move detection; latest request wins; unknown-input reply; typed answers at every step; persona Люся; encryption and log privacy; bot-switch safety; honest /status; natural Ukrainian time phrases |

@@ -2,6 +2,8 @@
 
 **Telegram bot: [@svitlo_lusia_zt_bot](https://t.me/svitlo_lusia_zt_bot)** · display name «Світло Житомир 💡 Графік відключень»
 
+*Built with AI assistance:* product decisions, requirements and testing by Tetiana Kozel; design and code produced with an AI assistant (Claude Code).
+
 The official **Svitlochek** app (АТ «Житомиробленерго», `ua.com.ztoe.outages`) shows the hourly outage
 schedule, but it does **not warn you before the power goes off or comes back**. Люся fills that gap: she reads
 the same public ZTOE schedule for your queue (черга / підчерга) and sends a **Telegram push alert** before every
