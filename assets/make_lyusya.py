@@ -1,4 +1,4 @@
-"""Draws Лампочка Люся (assets/lyusya-avatar.png, 640x640): python assets/make_lyusya.py OUT.png [PREVIEW.png]"""
+"""Draws Світло Люся (assets/lyusya-avatar.png, 640x640): python assets/make_lyusya.py OUT.png [PREVIEW.png]"""
 
 import math
 import sys

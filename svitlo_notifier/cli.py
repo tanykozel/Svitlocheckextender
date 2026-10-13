@@ -134,7 +134,7 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if chat_id:
-        send_message(token, chat_id, "✅ Привіт! Це Лампочка Люся 💡 Я на зв'язку - сюди приходитимуть сповіщення про світло.")
+        send_message(token, chat_id, "✅ Привіт! Це Світло Люся 💡 Я на зв'язку - сюди приходитимуть сповіщення про світло.")
         _annotate("notice", f"Test message sent to {chat_tag(chat_id)}. Telegram is ready.")
         return 0
 

@@ -1,4 +1,4 @@
-"""Лампочка Люся sticker set: 512x512 transparent PNGs, Telegram sticker format.
+"""Світло Люся sticker set: 512x512 transparent PNGs, Telegram sticker format.
 
     python assets/stickers/make_stickers.py assets/stickers
 """

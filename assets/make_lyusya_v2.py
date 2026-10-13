@@ -1,4 +1,4 @@
-"""Custom «Лампочка Люся» character icons (640x640).
+"""Custom «Світло Люся» character icons (640x640).
 
     python assets/make_lyusya_v2.py vinok OUT.png [PREVIEW.png]   # flower crown + bell
     python assets/make_lyusya_v2.py bow   OUT.png [PREVIEW.png]   # bow + phone with alert

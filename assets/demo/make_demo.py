@@ -190,7 +190,7 @@ def render(chat: list[Msg], caption: str = "", typing: bool = False) -> Image.Im
     mask = Image.new("L", (60, 60), 0)
     ImageDraw.Draw(mask).ellipse((0, 0, 60, 60), fill=255)
     img.paste(avatar, (20, 15), mask)
-    d.text((95, 16), "Лампочка Люся 💡".replace(" 💡", ""), font=f_head, fill=INK)
+    d.text((95, 16), "Світло Люся 💡".replace(" 💡", ""), font=f_head, fill=INK)
     d.text((95, 52), "бот", font=f_small, fill=MUTED)
 
     # Input bar with the Menu button.
@@ -317,7 +317,7 @@ def main(out: str) -> None:
                 break
         show(1.0, caption)
 
-    frames.append((card("Лампочка Люся", [
+    frames.append((card("Світло Люся", [
         "💡 Привіт! Я попереджаю про відключення світла за графіком Житомиробленерго.",
         "Демо: реальні адреси, графік - для прикладу.",
     ]), 4.0))
@@ -355,7 +355,7 @@ def main(out: str) -> None:
         "🔴 Попереджає за 15 / 30 / 60 хв до вимкнення і ввімкнення",
         "⏱ Каже, скільки триватиме відключення",
         "📅 Графік на сьогодні й завтра + посилання на ZTOE",
-        "⚠️ Сам помічає, якщо змінилась черга адреси",
+        "⚠️ Сама помічає, якщо змінилась черга адреси",
         "👥 Друзі підписуються самі: одна адреса, змінити - /change",
     ]), 6.0))
 
