@@ -1,6 +1,6 @@
 # «Світло Люся 💡»: outage alerts for Zhytomyr oblast
 
-**Telegram bot: [@svitlo_lusia_zt_bot](https://t.me/svitlo_lusia_zt_bot)** · display name «Світло Житомир 💡 Графік відключень»
+**Telegram bot: [@Svitlo_Lyusia_zt_bot](https://t.me/svitlo_lyusia_zt_bot)** · display name «Світло Житомир 💡 Графік відключень»
 
 *Built with AI assistance:* product decisions, requirements and testing by Tetiana Kozel; design and code produced with an AI assistant (Claude Code).
 
@@ -18,7 +18,7 @@ change, tells you **how long** each outage lasts, and lets you know when the **s
 ## For users
 
 ### Getting started
-1. Open **https://t.me/svitlo_lusia_zt_bot** and press **Start**.
+1. Open **https://t.me/svitlo_lyusia_zt_bot** and press **Start**.
 2. Answer 4 questions with buttons **or** by typing: **district → town/village → street → house number**.
    For example, type «звягельський», then «сусли». If the street is all in one queue, the house question is skipped.
 3. Люся confirms: «✅ Готово! с. Сусли, вул. Центральна 5: черга 1.2. Тепер я попереджатиму тебе за 30 хв…»
@@ -74,7 +74,7 @@ There's also a 🟡 "possible outage" alert for yellow slots. Every alert is sen
 
 ### Bot setup (one time)
 1. **Create the bot** in [@BotFather](https://t.me/BotFather): `/newbot`, display name `Світло Житомир 💡 Графік відключень`,
-   username `svitlo_lusia_zt_bot`. Keep the **token** secret. If it leaks, send `/revoke`.
+   username `svitlo_lyusia_zt_bot`. Keep the **token** secret. If it leaks, send `/revoke`.
 2. **Profile in BotFather:** `/setuserpic` with an avatar from [assets/](assets) (`lyusya-phone.png`,
    `lyusya-vinok.png` or `lyusya-avatar.png`), then `/setabouttext` and `/setdescription` (texts in Люся's voice;
    see the spec, section 4a). The command menu is registered **automatically** by the bot.
@@ -131,6 +131,7 @@ first bot run with this version.
 | File | What |
 |---|---|
 | `assets/lyusya-phone.png`, `assets/lyusya-vinok.png`, `assets/lyusya-avatar.png` | Люся avatars (640×640, round-crop safe) |
+| `assets/lyusya-night.png`, `-winter.png`, `-powerbank.png`, `-heart.png` | Seasonal / mood avatars: asleep under the moon, winter hat and blue-yellow scarf, holding a charged powerbank, wink with a heart (`make_lyusya_v2.py <variant>`) |
 | `assets/stickers/*.png` | 7 Telegram stickers (512×512): Світло є!, Мене вимкнули, Увага!, Я повернулась!, Графік, Заряджай!, Дякую! Publish them via [@Stickers](https://t.me/Stickers) → `/newpack`. |
 | `assets/demo/svitlo-demo.mp4` | 49-second demo video, built from the real bot texts |
 
