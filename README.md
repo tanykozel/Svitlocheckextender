@@ -120,7 +120,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 
 How it works: after every run, the workflow adds the run's numbers to `history.json`, `daily.json` and `events.json`
 on the `metrics` branch. They are **aggregate numbers only**, never chat ids or addresses. The page reads them from
-there. One-time setup: **Settings → Pages → Deploy from a branch → `main` / `/docs`**. Data appears after the
+there. One-time setup: **Settings → Pages → Deploy from a branch → the default branch (`claude/svitlocheck-subscribe-connect-jzvsxz`) / `/docs`**. Data appears after the
 first bot run with this version.
 
 ### Brand assets
