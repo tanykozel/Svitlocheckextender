@@ -1,0 +1,46 @@
+name: Release
+
+# Publishes a GitHub Release (and its version tag) for the code that is live on main.
+# Run it from Actions -> Release -> Run workflow, or let Claude start it after you approve a release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag, e.g. v0.3.3 (Semantic Versioning)"
+        required: true
+      title:
+        description: "Release title, e.g. v0.3.3: Releases & deploys dashboard"
+        required: true
+      notes:
+        description: "What's new, in plain language (Markdown). The list of merged PRs is added automatically."
+        required: false
+        default: ""
+
+permissions:
+  contents: write # to create the tag and the release
+
+jobs:
+  release:
+    # Releases describe production, so they are only made from main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the version number
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like v0.3.3"
+            exit 1
+          fi
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          TITLE: ${{ inputs.title }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          printf '%s\n' "$NOTES" > notes.md
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TITLE" --notes-file notes.md --generate-notes
+          echo "Published: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$VERSION"
