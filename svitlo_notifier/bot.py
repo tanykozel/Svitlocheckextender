@@ -20,13 +20,13 @@ from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, merge, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 4  # bump on every MENU change so Telegram's menu is refreshed
+MENU_VERSION = 5  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
     ("start", "Обрати адресу"),
     ("schedule", "Графік на сьогодні й завтра"),
-    ("status", "Чи є світло зараз"),
+    ("status", "Стан за графіком"),
     ("settings", "Коли попереджати"),
     ("change", "Змінити адресу"),
     ("stop", "Відписатися"),
@@ -200,7 +200,7 @@ HELP = (
     "/start - обрати адресу (одна на людину)\n"
     "/change - змінити адресу\n"
     "/schedule - графік на сьогодні й завтра\n"
-    "/status - чи є світло зараз\n"
+    "/status - стан за графіком зараз (без урахування аварійних відключень)\n"
     "/settings - за скільки хвилин попереджати\n"
     "/stop - відписатися\n\n"
     f"Графік перевіряю приблизно кожні {CHECK_EVERY_MIN} хв, тож відповідаю не миттєво - трохи терпіння 🙏\n"
