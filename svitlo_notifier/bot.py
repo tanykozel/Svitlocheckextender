@@ -20,17 +20,17 @@ from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, merge, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 3  # bump on every MENU change so Telegram's menu is refreshed
+MENU_VERSION = 4  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
     ("start", "Обрати адресу"),
     ("schedule", "Графік на сьогодні й завтра"),
-    ("status", "Стан зараз і найближчі зміни"),
-    ("settings", "За скільки хвилин попереджати"),
+    ("status", "Чи є світло зараз"),
+    ("settings", "Коли попереджати"),
     ("change", "Змінити адресу"),
     ("stop", "Відписатися"),
-    ("help", "Довідка"),
+    ("help", "Про Люсю і допомога"),
 ]
 DEFAULT_LEAD = 30
 Buttons = list[list[tuple[str, str]]]
@@ -194,16 +194,17 @@ class BotState:
 # --- conversation ---------------------------------------------------------------------
 
 HELP = (
-    "Я надсилаю сповіщення про відключення світла за графіком Житомиробленерго: "
-    "заздалегідь до вимкнення і до ввімкнення (скільки триватиме відключення), "
-    "а також коли графік публікують чи змінюють.\n\n"
-    "/start - обрати адресу (одна адреса на користувача)\n"
+    "Привіт, я Лампочка Люся 💡\n"
+    "Попереджаю про відключення світла за графіком Житомиробленерго: заздалегідь до вимкнення "
+    "і до ввімкнення, кажу, скільки мене не буде, і повідомляю, коли графік змінюється.\n\n"
+    "/start - обрати адресу (одна на людину)\n"
     "/change - змінити адресу\n"
     "/schedule - графік на сьогодні й завтра\n"
-    "/status - стан зараз і найближчі зміни\n"
+    "/status - чи є світло зараз\n"
     "/settings - за скільки хвилин попереджати\n"
     "/stop - відписатися\n\n"
-    f"Графік перевіряю кожні {CHECK_EVERY_MIN} хв, тому відповідаю не миттєво, а протягом ~{CHECK_EVERY_MIN} хв.\n"
+    f"Графік перевіряю приблизно кожні {CHECK_EVERY_MIN} хв, тож відповідаю не миттєво - трохи терпіння 🙏\n"
+    "Аварійні відключення, на жаль, передбачити не можу.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
 
@@ -246,7 +247,7 @@ class Bot:
         elif command == "/stop":
             self.state.subs.pop(chat, None)
             self.state.sessions.pop(chat, None)
-            self.send(chat_id, "Ви відписалися. Щоб знову отримувати сповіщення, надішліть /start.", None)
+            self.send(chat_id, "Добре, більше не турбуватиму 💤 Захочеш повернути мене - надішли /start.", None)
         elif command == "/status":
             self.status(chat_id)
         elif command == "/help":
@@ -260,14 +261,14 @@ class Bot:
             elif step == "house":
                 self.pick_house(chat_id, text)
             else:
-                self.send(chat_id, "Надішліть /start, щоб обрати адресу, або /help.", None)
+                self.send(chat_id, "Я поки розумію лише кнопки й команди 🙂 Надішли /start, щоб обрати адресу, або /help.", None)
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
         if data == "a:change":
             self.ask_rem(chat_id)
         elif data == "a:keep":
-            self.send(chat_id, "Добре, адресу залишено без змін.", None)
+            self.send(chat_id, "Добре, залишаю твою адресу як є 👌", None)
         elif kind == "l":
             self.lead_chosen(chat_id, value)
         elif kind == "r":
@@ -282,33 +283,33 @@ class Bot:
     def start(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Вітаю! Оберу вашу адресу за 4 кроки, і надсилатиму сповіщення про світло.", None)
+            self.send(chat_id, "Привіт! Я Лампочка Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
             self.ask_rem(chat_id)
             return
-        self.send(chat_id, f"Ваша адреса: {sub.label} (черга {sub.queue}.{sub.subqueue}).\n"
-                           "Можна підписатися лише на одну адресу. Змінити її?",
+        self.send(chat_id, f"Твоя адреса: {sub.label} (черга {sub.queue}.{sub.subqueue}).\n"
+                           "Я стежу лише за однією адресою на людину. Змінимо?",
                   [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
 
     def ask_lead(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Спершу оберіть адресу: /start", None)
+            self.send(chat_id, "Спершу обери адресу: /start", None)
             return
         buttons = [[(f"{'✓ ' if m == sub.lead_minutes else ''}за {m} хв", f"l:{m}") for m in LEAD_CHOICES]]
-        self.send(chat_id, f"За скільки хвилин попереджати про вимкнення та ввімкнення? Зараз: {sub.lead_minutes} хв.\n"
-                           f"(Графік перевіряю кожні {CHECK_EVERY_MIN} хв.)", buttons)
+        self.send(chat_id, f"За скільки хвилин тебе попереджати про вимкнення та ввімкнення? Зараз: {sub.lead_minutes} хв.\n"
+                           f"(Графік перевіряю приблизно кожні {CHECK_EVERY_MIN} хв.)", buttons)
 
     def lead_chosen(self, chat_id: int, value: str) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None or not value.isdigit() or int(value) not in LEAD_CHOICES:
             return
         sub.lead_minutes = int(value)
-        self.send(chat_id, f"✅ Попереджатиму за {value} хв.", None)
+        self.send(chat_id, f"✅ Домовились! Попереджатиму за {value} хв.", None)
 
     def schedule(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, f"Спершу оберіть адресу: /start\nПовний графік: {SCHEDULE_URL}", None)
+            self.send(chat_id, f"Спершу обери адресу: /start\nПовний графік: {SCHEDULE_URL}", None)
             return
         raw = self.dir.schedule(sub.queue, sub.subqueue)
         self.send(chat_id, schedule_text(raw, datetime.now(KYIV), f"{sub.label}, черга {sub.queue}.{sub.subqueue}"),
@@ -318,7 +319,7 @@ class Bot:
         """Send one example of every alert type for the user's real address, clearly marked as a test."""
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Спершу оберіть адресу: /start - тоді покажу приклади сповіщень.", None)
+            self.send(chat_id, "Спершу обери адресу: /start - тоді покажу приклади.", None)
             return
         now = datetime.now(KYIV)
         raw = self.dir.schedule(sub.queue, sub.subqueue)
@@ -334,36 +335,36 @@ class Bot:
         lead = timedelta(minutes=sub.lead_minutes)
         today = days.get(now.date(), [])
 
-        mark = "🧪 ТЕСТ - приклад, не справжнє сповіщення\n\n"
+        mark = "🧪 ТЕСТ - це лише приклад, не справжнє сповіщення\n\n"
         samples = [
             describe_event(off, off.at - lead, sub.label),
             describe_event(on, on.at - lead, sub.label, next_off),
             describe_day(now.date(), today, sub.label, changed=True),
-            f"⚠️ Житомиробленерго змінило чергу для вашої адреси ({sub.label}): було {sub.queue}.{sub.subqueue}, "
-            f"тепер X.Y.\nСповіщення тепер приходять за новою чергою. Графік: /schedule",
+            f"⚠️ Житомиробленерго змінило чергу для твоєї адреси ({sub.label}): було {sub.queue}.{sub.subqueue}, "
+            f"тепер X.Y.\nЯ вже стежу за новою чергою 👀 Графік: /schedule",
         ]
-        self.send(chat_id, f"Надсилаю {len(samples)} приклади сповіщень для вашої адреси "
-                           f"(попередження за {sub.lead_minutes} хв).", None)
+        self.send(chat_id, f"Ось {len(samples)} приклади моїх сповіщень для твоєї адреси "
+                           f"(попереджаю за {sub.lead_minutes} хв):", None)
         for text in samples:
             self.send(chat_id, mark + text, None)
 
     def ask_rem(self, chat_id: int) -> None:
         self.state.sessions[str(chat_id)] = {"step": "rem"}
         rems = sorted(self.dir.rems(), key=lambda r: str(r.get("name")))
-        self.send(chat_id, "1/4. Оберіть ваш район (РЕМ):", as_buttons(rems, "r", per_row=2))
+        self.send(chat_id, "1/4. Обери свій район (РЕМ):", as_buttons(rems, "r", per_row=2))
 
     def rem_chosen(self, chat_id: int, rem_id: str) -> None:
         session = self.state.sessions[str(chat_id)] = {"step": "city", "rem": rem_id}
         cities = self.dir.cities(rem_id)
         towns = [c for c in cities if not str(c.get("name", "")).startswith("с.")][:MAX_BUTTONS]
         session["names"] = {str(c["id"]): str(c["name"]) for c in towns}
-        self.send(chat_id, "2/4. Напишіть назву міста чи села (наприклад: Сусли) або оберіть зі списку:",
+        self.send(chat_id, "2/4. Напиши назву міста чи села (наприклад: Сусли) або обери зі списку:",
                   as_buttons(towns, "c") or None)
 
     def pick_city_by_text(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
         found = match(self.dir.cities(session["rem"]), text)
-        self._pick(chat_id, found, "c", self.city_chosen, "населений пункт")
+        self._pick(chat_id, found, "c", self.city_chosen, "такий населений пункт")
 
     def city_chosen(self, chat_id: int, city_id: str) -> None:
         session = self._session(str(chat_id))
@@ -371,18 +372,18 @@ class Bot:
         session.update({"step": "street", "city": city_id, "city_name": city_name})
         streets = self.dir.streets(city_id)
         if not streets:
-            self.send(chat_id, "Для цього населеного пункту немає вулиць у базі. Спробуйте /start ще раз.", None)
+            self.send(chat_id, "Ой, для цього населеного пункту в базі немає вулиць 😕 Спробуй /start ще раз.", None)
             return
         session["names"] = {str(s["id"]): str(s["name"]) for s in streets}
         if len(streets) <= MAX_BUTTONS:
-            self.send(chat_id, f"3/4. {city_name}: оберіть вулицю:", as_buttons(streets, "s"))
+            self.send(chat_id, f"3/4. {city_name}: обери вулицю:", as_buttons(streets, "s"))
         else:
-            self.send(chat_id, f"3/4. {city_name}: напишіть назву вулиці (наприклад: Центральна):", None)
+            self.send(chat_id, f"3/4. {city_name}: напиши назву вулиці (наприклад: Центральна):", None)
 
     def pick_street_by_text(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
         found = match(self.dir.streets(session["city"]), text)
-        self._pick(chat_id, found, "s", self.street_chosen, "вулицю")
+        self._pick(chat_id, found, "s", self.street_chosen, "таку вулицю")
 
     def street_chosen(self, chat_id: int, street_id: str) -> None:
         session = self._session(str(chat_id))
@@ -393,9 +394,9 @@ class Bot:
             # The whole street is in one queue: no need to ask for the house.
             self.subscribe(chat_id, *found, self._label(session), street_id=street_id)
         elif found == "missing":
-            self.send(chat_id, "Не знайшов будинків на цій вулиці. Спробуйте /start ще раз.", None)
+            self.send(chat_id, "Ой, на цій вулиці не знайшла будинків 😕 Спробуй /start ще раз.", None)
         else:
-            self.send(chat_id, "4/4. Напишіть номер будинку (наприклад: 12 або 12А):", None)
+            self.send(chat_id, "4/4. Напиши номер будинку (наприклад: 12 або 12А):", None)
 
     def pick_house(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
@@ -405,7 +406,7 @@ class Bot:
             self.subscribe(chat_id, *found, self._label(session, text.strip()),
                            street_id=session["street"], house=wanted)
             return
-        self.send(chat_id, f"Будинок «{text.strip()}» не знайдено на цій вулиці. Перевірте номер і напишіть ще раз.",
+        self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
                   None)
 
     def _pick(self, chat_id: int, found: list[dict], prefix: str,
@@ -415,12 +416,12 @@ class Bot:
             session.setdefault("names", {})[str(found[0]["id"])] = str(found[0]["name"])
             chosen(chat_id, str(found[0]["id"]))
         elif not found:
-            self.send(chat_id, f"Не знайшов такий {what}. Перевірте написання і спробуйте ще раз.", None)
+            self.send(chat_id, f"Не знайшла {what} 🤔 Перевір написання і спробуй ще раз.", None)
         elif len(found) <= MAX_BUTTONS:
             session.setdefault("names", {}).update({str(o["id"]): str(o["name"]) for o in found})
-            self.send(chat_id, "Знайшов кілька варіантів, оберіть:", as_buttons(found, prefix))
+            self.send(chat_id, "Знайшла кілька варіантів - обери свій:", as_buttons(found, prefix))
         else:
-            self.send(chat_id, f"Забагато варіантів ({len(found)}). Напишіть точніше.", None)
+            self.send(chat_id, f"Ой, аж {len(found)} варіантів 😅 Напиши трохи точніше.", None)
 
     @staticmethod
     def _label(session: dict, house: str = "") -> str:
@@ -439,15 +440,15 @@ class Bot:
         self.state.sessions.pop(chat, None)
         head = "✅ Адресу змінено" if old else "✅ Готово"
         self.send(chat_id, f"{head}! {label}: черга {queue}.{subqueue}.\n"
-                           f"Попереджатиму за {lead} хв до вимкнення і ввімкнення світла "
-                           "(і скажу, скільки триватиме відключення), а також коли графік зміниться.\n"
-                           "/schedule - графік, /settings - час попередження, /change - інша адреса, "
-                           "/stop - відписатися.", None)
+                           f"Тепер я попереджатиму тебе за {lead} хв до вимкнення і ввімкнення світла, "
+                           "скажу, скільки мене не буде, і повідомлю, якщо графік зміниться 💡\n\n"
+                           "/schedule - графік · /settings - коли попереджати · /change - інша адреса · "
+                           "/stop - відписатися", None)
 
     def status(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if not sub:
-            self.send(chat_id, "Ви ще не обрали адресу. Надішліть /start.", None)
+            self.send(chat_id, "Адресу ще не обрано. Надішли /start - і я почну стежити 💡", None)
             return
         raw = self.dir.schedule(sub.queue, sub.subqueue)
         self.send(chat_id, summary(raw, datetime.now(KYIV), f"{sub.label} (черга {sub.queue}.{sub.subqueue})"),
@@ -475,7 +476,7 @@ class Bot:
                 chat_id = _chat_of(update)
                 print(f"warning: update {update.get('update_id')} failed: {exc}")
                 if chat_id is not None:
-                    self.send(chat_id, "Сталася помилка під час пошуку. Спробуйте /start ще раз трохи пізніше.",
+                    self.send(chat_id, "Ой, щось пішло не так під час пошуку 😕 Спробуй /start трохи пізніше.",
                               None)
 
     def refresh_queues(self, now: datetime, every: timedelta = timedelta(hours=6)) -> int:
@@ -509,16 +510,16 @@ class Bot:
                         sub.queue, sub.subqueue = found
                         sub.alerts = State()  # new queue: start its alert history fresh
                         changed += 1
-                        self.send(int(chat), f"⚠️ Житомиробленерго змінило чергу для вашої адреси ({sub.label}): "
+                        self.send(int(chat), f"⚠️ Житомиробленерго змінило чергу для твоєї адреси ({sub.label}): "
                                              f"було {old}, тепер {sub.queue}.{sub.subqueue}.\n"
-                                             "Сповіщення тепер приходять за новою чергою. Графік: /schedule", None)
+                                             "Я вже стежу за новою чергою 👀 Графік: /schedule", None)
                 elif found != sub.problem:
                     sub.problem = found
-                    text = ("⚠️ Не можу знайти вашу адресу в базі Житомиробленерго. Сповіщення поки йдуть за "
-                            f"чергою {sub.queue}.{sub.subqueue}. Перевірте адресу: /change"
+                    text = ("⚠️ Не можу знайти твою адресу в базі Житомиробленерго. Поки попереджаю за "
+                            f"чергою {sub.queue}.{sub.subqueue}. Перевір адресу: /change"
                             if found == "missing" else
-                            "⚠️ На вашій вулиці тепер кілька різних черг. Вкажіть номер будинку, щоб "
-                            f"сповіщення були точні: /change (поки що - черга {sub.queue}.{sub.subqueue})")
+                            "⚠️ На твоїй вулиці тепер кілька різних черг. Вкажи номер будинку, щоб я "
+                            f"попереджала точно: /change (поки що стежу за чергою {sub.queue}.{sub.subqueue})")
                     self.send(int(chat), text, None)
             except Exception as exc:  # noqa: BLE001 - delivery problems are handled in send_alerts
                 print(f"warning: could not notify {chat_tag(chat)} about its queue: {type(exc).__name__}")
