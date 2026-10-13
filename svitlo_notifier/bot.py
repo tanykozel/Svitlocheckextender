@@ -209,6 +209,8 @@ class BotState:
 
 # --- conversation ---------------------------------------------------------------------
 
+NOT_UNDERSTOOD = "Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help."
+
 HELP = (
     "Привіт, я Лампочка Люся 💡\n"
     "Попереджаю про відключення світла за графіком Житомиробленерго: заздалегідь до вимкнення "
@@ -249,7 +251,7 @@ class Bot:
 
     def handle_text(self, chat_id: int, text: str) -> None:
         chat = str(chat_id)
-        command = text.strip().split()[0].lower().split("@")[0] if text.strip() else ""
+        command = text.strip().split()[0].lower().split("@")[0] if text.strip().startswith("/") else ""
         if command in ("/start", "/subscribe"):
             self.start(chat_id)
         elif command in ("/change", "/address"):
@@ -268,6 +270,8 @@ class Bot:
             self.status(chat_id)
         elif command == "/help":
             self.send(chat_id, HELP, None)
+        elif command:  # any other /command, even mid-quiz, is not an answer
+            self.send(chat_id, NOT_UNDERSTOOD, None)
         else:
             step = self._session(chat).get("step")
             if step == "city":
@@ -277,7 +281,7 @@ class Bot:
             elif step == "house":
                 self.pick_house(chat_id, text)
             else:
-                self.send(chat_id, "Я поки розумію лише кнопки й команди 🙂 Надішли /start, щоб обрати адресу, або /help.", None)
+                self.send(chat_id, NOT_UNDERSTOOD, None)
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
@@ -488,6 +492,9 @@ class Bot:
                 elif "message" in update and "text" in update["message"]:
                     message = update["message"]
                     self.handle_text(message["chat"]["id"], message["text"])
+                elif "message" in update and "chat" in update["message"]:
+                    # Stickers, photos, voice, files...: say so instead of staying silent.
+                    self.send(update["message"]["chat"]["id"], NOT_UNDERSTOOD, None)
             except (ApiError, KeyError, ValueError) as exc:
                 chat_id = _chat_of(update)
                 print(f"warning: update {update.get('update_id')} failed: {exc}")

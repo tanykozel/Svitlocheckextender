@@ -443,3 +443,37 @@ class BotNameTests(unittest.TestCase):
         updates = [{"update_id": 1, "message": {"chat": {"id": 1}, "text": "/start@svitlo_lusia_zt_bot"}},
                    {"update_id": 2, "message": {"chat": {"id": 1}, "text": "/start"}}]
         self.assertEqual(len(latest_requests(updates)), 1, "both spellings count as the same /start")
+
+
+class NotUnderstoodTests(unittest.TestCase):
+    """US-13: anything that isn't a known command or a quiz answer gets one friendly hint."""
+
+    def setUp(self):
+        self.sent = []
+        self.state = BotState()
+        self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append(text), self.state)
+
+    def test_random_text_outside_the_quiz(self):
+        self.bot.handle_text(1, "привіт, коли буде світло?")
+        self.assertIn("Я тебе не розумію", self.sent[-1])
+        self.assertIn("меню", self.sent[-1])
+
+    def test_unknown_command_even_mid_quiz_is_not_taken_as_an_answer(self):
+        self.bot.handle_text(1, "/start")
+        self.bot.handle_button(1, "r:16")
+        self.bot.handle_text(1, "/hello")
+        self.assertIn("Я тебе не розумію", self.sent[-1])
+        self.assertEqual(self.state.sessions["1"]["step"], "city", "the quiz is still waiting for the village")
+        self.bot.handle_text(1, "сусли")
+        self.assertIn("3/4", self.sent[-1], "a normal answer still works afterwards")
+
+    def test_typed_quiz_answers_are_still_answers(self):
+        self.bot.handle_text(1, "/start")
+        self.bot.handle_button(1, "r:16")
+        self.bot.handle_text(1, "сусли")
+        self.assertNotIn("Я тебе не розумію", self.sent[-1])
+
+    def test_sticker_photo_or_voice_gets_the_hint(self):
+        self.bot.process_updates([{"update_id": 1, "message": {"chat": {"id": 9}, "sticker": {"file_id": "x"}}},
+                                  {"update_id": 2, "message": {"chat": {"id": 8}, "voice": {"file_id": "y"}}}])
+        self.assertEqual([t for t in self.sent if "не розумію" in t].__len__(), 2)
