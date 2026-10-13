@@ -205,17 +205,29 @@ def cmd_bot(args: argparse.Namespace) -> int:
         _write_json(path, state.to_dict())
         return len(updates)
 
+    moved = sent = 0
+
+    def alerts() -> None:
+        nonlocal moved, sent
+        now = datetime.now(KYIV)
+        moved += bot.refresh_queues(now)
+        sent += bot.send_alerts(now, is_gone=_telegram_gone)
+        _write_json(path, state.to_dict())
+
     handled = read_and_answer(0)
-    # "Stay awake": keep listening with long polling so replies arrive within a second or two.
+    alerts()
+    # "Stay awake": keep listening with long polling so replies arrive within a second or two,
+    # and keep checking alerts every minute so they go out on time during the session.
     deadline = time.monotonic() + args.stay_minutes * 60
+    next_alerts = time.monotonic() + 60
     while time.monotonic() < deadline - 5:
         handled += read_and_answer(int(min(25, max(1, deadline - time.monotonic() - 5))))
+        if time.monotonic() >= next_alerts:
+            alerts()
+            next_alerts = time.monotonic() + 60
+    if args.stay_minutes:
+        alerts()
     print(f"processed {handled} message(s)")
-
-    now = datetime.now(KYIV)
-    moved = bot.refresh_queues(now)
-    sent = bot.send_alerts(now, is_gone=_telegram_gone)
-    _write_json(path, state.to_dict())
     print(f"subscribers: {len(state.subs)}, queues changed: {moved}, alerts sent: {sent}")
     return 0
 
