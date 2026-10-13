@@ -191,3 +191,17 @@ class BotSwitchTests(unittest.TestCase):
              redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["bot", "--state", str(Path(tmp) / "b.json")]), 1)
             self.assertFalse((Path(tmp) / "b.json").exists())
+
+
+class GoneChatTests(unittest.TestCase):
+    def test_only_people_who_left_are_unsubscribed(self):
+        from svitlo_notifier.telegram import TelegramError
+        for text in ("Forbidden: bot was blocked by the user", "Forbidden: user is deactivated",
+                     "Forbidden: bot was kicked from the group chat"):
+            self.assertTrue(cli._telegram_gone(TelegramError(text)), text)
+
+    def test_new_bot_not_started_yet_keeps_the_subscription(self):
+        from svitlo_notifier.telegram import TelegramError
+        for text in ("Bad Request: chat not found", "Forbidden: bot can't initiate conversation with a user"):
+            self.assertFalse(cli._telegram_gone(TelegramError(text)), text)
+
