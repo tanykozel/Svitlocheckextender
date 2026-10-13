@@ -274,7 +274,9 @@ class Bot:
             self.send(chat_id, NOT_UNDERSTOOD, None)
         else:
             step = self._session(chat).get("step")
-            if step == "city":
+            if step == "rem":
+                self.pick_rem_by_text(chat_id, text)
+            elif step == "city":
                 self.pick_city_by_text(chat_id, text)
             elif step == "street":
                 self.pick_street_by_text(chat_id, text)
@@ -372,6 +374,11 @@ class Bot:
         self.state.sessions[str(chat_id)] = {"step": "rem"}
         rems = sorted(self.dir.rems(), key=lambda r: str(r.get("name")))
         self.send(chat_id, "1/4. Обери свій район (РЕМ):", as_buttons(rems, "r", per_row=2))
+
+    def pick_rem_by_text(self, chat_id: int, text: str) -> None:
+        """Typed district: "Звягельський", "звягельський район", "Звягельський РЕМ" all work."""
+        query = re.sub(r"\s*(район|р-н|рем)\.?\s*$", "", text.strip(), flags=re.IGNORECASE)
+        self._pick(chat_id, match(self.dir.rems(), query), "r", self.rem_chosen, "такий район")
 
     def rem_chosen(self, chat_id: int, rem_id: str) -> None:
         session = self.state.sessions[str(chat_id)] = {"step": "city", "rem": rem_id}

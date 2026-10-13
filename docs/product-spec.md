@@ -127,7 +127,10 @@ so that the chat isn't flooded with duplicate replies.
   «Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help.»
 - *Given* I'm in the middle of the quiz and send an unknown /command, *then* I get the same hint and the quiz keeps waiting.
 - *Given* I send a sticker, photo, voice message or file, *then* I get the same hint instead of silence.
-- Typed quiz answers (village, street, house number) are never treated as "unknown".
+- Typed quiz answers are never treated as "unknown": **every** address step (district, town/village, street,
+  house) accepts typed text as well as buttons. A miss replies «Не знайшла такий район / населений пункт /
+  таку вулицю / будинок … 🤔 Перевір написання і спробуй ще раз.» and the step keeps waiting.
+- District can be typed with or without «район», «р-н» or «РЕМ».
 
 ## 4a. Voice & tone: persona «Лампочка Люся 💡» (decided 2026-10-13)
 
