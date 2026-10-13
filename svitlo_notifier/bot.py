@@ -42,7 +42,8 @@ class Directory(Protocol):
     def schedule(self, queue: int, subqueue: int) -> list[dict]: ...
 
 
-Send = Callable[[int, str, Buttons | None], None]
+Send = Callable[[int, str, Buttons | None], "int | None"]  # returns the sent message id, if known
+Unbutton = Callable[[int, int], None]  # remove the buttons under (chat id, message id)
 
 
 # --- text helpers ----------------------------------------------------------------
@@ -95,6 +96,46 @@ def resolve_queue(rows: list[dict], house: str) -> tuple[int, int] | str:
     return "ambiguous" if queues else "missing"
 
 
+RESET_COMMANDS = {"/start", "/subscribe", "/change", "/address", "/stop"}
+
+
+def _kind(update: dict) -> tuple[int | None, str, bool]:
+    """(chat id, request kind, starts over?) - e.g. (42, "/start", True) or (42, "btn:r", False)."""
+    if "callback_query" in update:
+        query = update["callback_query"]
+        chat = ((query.get("message") or {}).get("chat") or {}).get("id")
+        data = str(query.get("data", ""))
+        return chat, f"btn:{data.partition(':')[0]}", data == "a:change"
+    message = update.get("message") or {}
+    text = str(message.get("text", "")).strip()
+    chat = (message.get("chat") or {}).get("id")
+    command = text.split()[0].lower().split("@")[0] if text.startswith("/") else ""
+    return chat, command or "text", command in RESET_COMMANDS
+
+
+def latest_requests(updates: list[dict]) -> list[dict]:
+    """Keep only what each chat asked for most recently.
+
+    Between two runs a user may tap or type several times (often because the bot looked silent).
+    For each chat: everything before its last "start over" request (/start, /change, /stop) is dropped,
+    and of back-to-back requests of the same kind (two /start, two district taps) only the last is kept.
+    """
+    kinds = [_kind(u) for u in updates]
+    last_reset: dict[int, int] = {}
+    for i, (chat, _kind_name, resets) in enumerate(kinds):
+        if resets:
+            last_reset[chat] = i
+    kept: list[int] = []
+    for i, (chat, kind_name, _resets) in enumerate(kinds):
+        if chat in last_reset and i < last_reset[chat]:
+            continue
+        previous = next((j for j in reversed(kept) if kinds[j][0] == chat), None)
+        if previous is not None and kinds[previous][1] == kind_name and kind_name != "text":
+            kept.remove(previous)  # same kind again: the newer one replaces it
+        kept.append(i)
+    return [updates[i] for i in kept]
+
+
 # --- persisted state ----------------------------------------------------------------
 
 
@@ -133,17 +174,19 @@ class BotState:
     menu_version: int = 0  # bumped when MENU changes, so Telegram is updated once
     subs: dict[str, Subscription] = field(default_factory=dict)  # chat id -> subscription
     sessions: dict[str, dict] = field(default_factory=dict)  # chat id -> quiz progress
+    keyboards: dict[str, int] = field(default_factory=dict)  # chat id -> message with the live buttons
 
     def to_dict(self) -> dict:
         return {"offset": self.offset, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
-                "sessions": self.sessions}
+                "sessions": self.sessions, "keyboards": self.keyboards}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
         return cls(raw.get("offset"), int(raw.get("menu_version", 0)),
                    {k: Subscription.from_dict(v) for k, v in raw.get("subs", {}).items()},
-                   dict(raw.get("sessions", {})))
+                   dict(raw.get("sessions", {})),
+                   {k: int(v) for k, v in raw.get("keyboards", {}).items()})
 
 
 # --- conversation ---------------------------------------------------------------------
@@ -164,10 +207,21 @@ HELP = (
 
 
 class Bot:
-    def __init__(self, directory: Directory, send: Send, state: BotState) -> None:
+    def __init__(self, directory: Directory, send: Send, state: BotState,
+                 unbutton: Unbutton = lambda _chat, _message: None) -> None:
         self.dir = directory
-        self.send = send
+        self._send = send
+        self._unbutton = unbutton
         self.state = state
+
+    def send(self, chat_id: int, text: str, buttons: Buttons | None) -> None:
+        """Send a message. A new set of buttons retires the previous one, so only the latest can be tapped."""
+        chat = str(chat_id)
+        if buttons and chat in self.state.keyboards:
+            self._unbutton(chat_id, self.state.keyboards.pop(chat))
+        message_id = self._send(chat_id, text, buttons)
+        if buttons and message_id is not None:
+            self.state.keyboards[chat] = int(message_id)
 
     def _session(self, chat: str) -> dict:
         return self.state.sessions.setdefault(chat, {})
@@ -365,12 +419,15 @@ class Bot:
     # tick -----------------------------------------------------------------------------
 
     def process_updates(self, updates: list[dict], answer: Callable[[str], None] = lambda _id: None) -> None:
+        if updates:
+            self.state.offset = max(int(u["update_id"]) for u in updates) + 1
         for update in updates:
-            self.state.offset = int(update["update_id"]) + 1
+            if "callback_query" in update:
+                answer(update["callback_query"]["id"])  # stop every tapped button's spinner, kept or not
+        for update in latest_requests(updates):
             try:
                 if "callback_query" in update:
                     query = update["callback_query"]
-                    answer(query["id"])
                     chat_id = (query.get("message") or {}).get("chat", {}).get("id")
                     if chat_id is not None:
                         self.handle_button(chat_id, str(query.get("data", "")))

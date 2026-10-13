@@ -42,8 +42,8 @@ def send_message(
     text: str,
     timeout: float = 20.0,
     buttons: list[list[tuple[str, str]]] | None = None,
-) -> None:
-    """Send text; `buttons` are rows of (label, callback_data) shown under the message."""
+) -> int | None:
+    """Send text; `buttons` are rows of (label, callback_data) shown under the message. Returns the message id."""
     payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
     if buttons:
         payload["reply_markup"] = {
@@ -51,7 +51,17 @@ def send_message(
                 [{"text": label, "callback_data": data} for label, data in row] for row in buttons
             ]
         }
-    _call(token, "sendMessage", payload, timeout)
+    result = _call(token, "sendMessage", payload, timeout)
+    return result.get("message_id") if isinstance(result, dict) else None
+
+
+def remove_buttons(token: str, chat_id: int, message_id: int) -> None:
+    """Take the buttons off an older message so they can't be tapped any more. Best effort."""
+    try:
+        _call(token, "editMessageReplyMarkup",
+              {"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}})
+    except TelegramError:
+        pass
 
 
 def get_updates(token: str, offset: int | None = None) -> list[dict]:

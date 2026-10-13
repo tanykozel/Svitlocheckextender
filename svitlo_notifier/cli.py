@@ -14,8 +14,8 @@ from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
 from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
-from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, send_message,
-                       set_commands)
+from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, remove_buttons,
+                       send_message, set_commands)
 
 
 def _env_int(name: str) -> int | None:
@@ -179,7 +179,8 @@ def cmd_bot(args: argparse.Namespace) -> int:
         except TelegramError as exc:
             print(f"warning: could not set the bot menu: {exc}")
 
-    bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state)
+    bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
+              unbutton=lambda chat, message: remove_buttons(token, chat, message))
     try:
         updates = get_updates(token, state.offset)
         bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
