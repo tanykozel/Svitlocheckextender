@@ -132,7 +132,7 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if chat_id:
-        send_message(token, chat_id, "✅ Svitlo notifier підключено. Сюди приходитимуть сповіщення про світло.")
+        send_message(token, chat_id, "✅ Привіт! Це Лампочка Люся 💡 Я на зв'язку - сюди приходитимуть сповіщення про світло.")
         _annotate("notice", f"Test message sent to {chat_tag(chat_id)}. Telegram is ready.")
         return 0
 
@@ -183,6 +183,16 @@ def cmd_bot(args: argparse.Namespace) -> int:
     if owner and queue is not None and subqueue is not None and owner not in state.subs:
         state.subs[owner] = Subscription(queue, subqueue, os.environ.get("SVITLO_LABEL", ""),
                                          lead_minutes=_env_int("SVITLO_LEAD_MINUTES") or 30)
+
+    try:
+        me = get_me(token)
+    except TelegramError as exc:
+        _annotate("error", f"Telegram rejected the bot token: {exc}")
+        return 1
+    print(f"bot: @{me.get('username')}")
+    if state.switch_bot(int(me["id"])):
+        _annotate("notice", f"New bot detected (@{me.get('username')}): message counter and menu reset, "
+                            f"{len(state.subs)} subscription(s) kept")
 
     if state.menu_version < MENU_VERSION:
         try:

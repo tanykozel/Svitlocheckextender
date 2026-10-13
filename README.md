@@ -1,4 +1,4 @@
-# Svitlo notifier (Svitlochek extender)
+# Svitlo notifier: «Лампочка Люся 💡» (@svitlo_lusia_zt_bot)
 
 The official **Svitlochek** app (АТ «Житомиробленерго», `ua.com.ztoe.outages`) shows the
 hourly outage schedule, but it does **not warn you before power goes off or comes back**.
@@ -55,10 +55,16 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
 
 6. Optional polish in BotFather: `/setuserpic` for an avatar (ready-made: [assets/lyusya-avatar.png](assets/lyusya-avatar.png), the persona «Лампочка Люся»; or the plain [assets/bot-avatar.png](assets/bot-avatar.png)), and `/setdescription` for the text people see before pressing Start.
 
+**Switching to another bot later** (e.g. a new username or account): put the new bot's token in the
+`TELEGRAM_BOT_TOKEN` secret. On the next run the bot detects the change: it resets its message counter
+and menu, and **keeps all subscriptions**. Each person only has to press **Start** in the new bot.
+
 For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 (Settings → Secrets and variables → Actions).
 
 ## Share with friends (address quiz in the bot)
+
+Link to share: **https://t.me/svitlo_lusia_zt_bot**
 
 Friends don't need GitHub or any setup. They open your bot, press **Start**, and answer 4 questions with buttons
 or short text: **district → town/village → street → house**. The bot then replies

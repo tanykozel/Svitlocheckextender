@@ -65,6 +65,7 @@ class BotCommandTests(unittest.TestCase):
             for _ in range(2):
                 with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
                      mock.patch.object(cli, "set_commands", side_effect=lambda *a: calls.append(a)), \
+                     mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
                      mock.patch.object(cli, "get_updates", return_value=[]), \
                      redirect_stdout(io.StringIO()):
                     self.assertEqual(cli.main(["bot", "--state", str(state)]), 0)
@@ -94,6 +95,7 @@ class StayAwakeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
              mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
              mock.patch.object(cli, "get_updates", side_effect=fake_updates), \
              mock.patch.object(cli.Bot, "send_alerts", side_effect=lambda *a, **k: alert_checks.append(1) or 0), \
              mock.patch.object(cli.time, "monotonic", side_effect=lambda: clock["t"]), \
@@ -103,3 +105,58 @@ class StayAwakeTests(unittest.TestCase):
         self.assertTrue(all(0 < w <= 25 for w in waits[1:]), waits)
         self.assertGreaterEqual(clock["t"], 170, "stayed awake ~3 minutes")
         self.assertGreaterEqual(len(alert_checks), 4, "start + about once a minute + end")
+
+
+class BotSwitchTests(unittest.TestCase):
+    """Switching to a new bot token (@svitlo_dim_tk_bot -> @svitlo_lusia_zt_bot)."""
+
+    def run_bot(self, state_path, bot_id, username, offsets_seen):
+        def updates(_token, offset=None, wait=0):
+            offsets_seen.append(offset)
+            return []
+        with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
+             mock.patch.object(cli, "get_me", return_value={"id": bot_id, "username": username}), \
+             mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "get_updates", side_effect=updates), \
+             redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(cli.main(["bot", "--state", str(state_path)]), 0)
+        return out.getvalue()
+
+    def test_new_bot_resets_counter_and_menu_but_keeps_subscriptions(self):
+        import tempfile
+        from pathlib import Path
+
+        from svitlo_notifier.bot import BotState, Subscription
+        from svitlo_notifier.secure import load_json, save_json
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bot.json"
+            old = BotState(offset=900_000, bot_id=111, menu_version=5,
+                           subs={"42": Subscription(1, 2, "с. Сусли, вул. Центральна 5")},
+                           sessions={"42": {"step": "city"}}, keyboards={"42": 5})
+            save_json(path, old.to_dict())
+            offsets = []
+            out = self.run_bot(path, 222, "svitlo_lusia_zt_bot", offsets)
+            self.assertIn("bot: @svitlo_lusia_zt_bot", out)
+            self.assertIn("New bot detected", out)
+            self.assertEqual(offsets[0], None, "old bot's counter is not used with the new bot")
+            saved = BotState.from_dict(load_json(path))
+            self.assertEqual(saved.bot_id, 222)
+            self.assertIn("42", saved.subs, "subscription kept")
+            self.assertEqual(saved.sessions, {})
+            self.assertEqual(saved.keyboards, {})
+
+            offsets.clear()
+            out = self.run_bot(path, 222, "svitlo_lusia_zt_bot", offsets)
+            self.assertNotIn("New bot detected", out, "same bot next time: nothing reset")
+
+    def test_rejected_token_stops_without_touching_state(self):
+        import tempfile
+        from pathlib import Path
+
+        from svitlo_notifier.telegram import TelegramError
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "bad"}, clear=True), \
+             mock.patch.object(cli, "get_me", side_effect=TelegramError("getMe rejected: Unauthorized")), \
+             redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(["bot", "--state", str(Path(tmp) / "b.json")]), 1)
+            self.assertFalse((Path(tmp) / "b.json").exists())
