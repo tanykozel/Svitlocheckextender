@@ -121,7 +121,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 
 How it works: after every run, the workflow adds the run's numbers to `history.json`, `daily.json` and `events.json`
 on the `metrics` branch. They are **aggregate numbers only**, never chat ids or addresses. The page reads them from
-there. One-time setup: **Settings → Pages → Deploy from a branch → the default branch (`claude/svitlocheck-subscribe-connect-jzvsxz`) / `/docs`**. Data appears after the
+there. One-time setup: **Settings → Pages → Deploy from a branch → `main` / `/docs`**. Data appears after the
 first bot run with this version.
 
 ### Brand assets
@@ -166,3 +166,13 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 pip install cryptography==43.0.3
 python -m unittest discover -s tests -v      # 84 tests
 ```
+
+### How changes are made
+- **`main` is production.** The scheduled bot runs and the dashboard page come from `main`, so a merge into
+  `main` is a deployment.
+- **One branch per change** (`feature/...`, `fix/...`), then a **pull request** into `main`. The Tests workflow
+  (check `unit`) must pass, and the owner reviews and merges. Link the user story in the PR (e.g. "US-16").
+- **Releases** are tags on `main` using [Semantic Versioning](https://semver.org): `v0.3.1` = fix or small addition,
+  `v0.4.0` = new capability. Create a GitHub Release from the tag with "Generate release notes". The product view of
+  the history is in the spec, section 9.
+- The `metrics` branch is **data only**: the bot rewrites it after every run. Never edit it or open a PR from it.
