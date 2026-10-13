@@ -131,6 +131,7 @@ first bot run with this version.
 | File | What |
 |---|---|
 | `assets/lyusya-phone.png`, `assets/lyusya-vinok.png`, `assets/lyusya-avatar.png` | Люся avatars (640×640, round-crop safe) |
+| `assets/lyusya-night.png`, `-winter.png`, `-powerbank.png`, `-heart.png` | Seasonal / mood avatars: asleep under the moon, winter hat and blue-yellow scarf, holding a charged powerbank, wink with a heart (`make_lyusya_v2.py <variant>`) |
 | `assets/stickers/*.png` | 7 Telegram stickers (512×512): Світло є!, Мене вимкнули, Увага!, Я повернулась!, Графік, Заряджай!, Дякую! Publish them via [@Stickers](https://t.me/Stickers) → `/newpack`. |
 | `assets/demo/svitlo-demo.mp4` | 49-second demo video, built from the real bot texts |
 
