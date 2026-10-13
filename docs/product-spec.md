@@ -133,7 +133,7 @@ so that the chat isn't flooded with duplicate replies.
 | Honest about limits | No promises about emergency outages; the source (Житомиробленерго) is always named |
 | 1–2 emoji per message, meaningful ones | 🔴 off, 🟢 on, 🟡 possible, 📅 schedule, ⚠️ change |
 
-Display name: «Лампочка Люся 💡 | Світло Житомирщина». Avatar: `assets/lyusya-avatar.png`.
+Display name: «Світло Житомир 💡 Графік відключень» (keywords for search); username @svitlo_lusia_zt_bot. The persona introduces herself inside the chat. Avatar: `assets/lyusya-avatar.png`.
 
 ## 5. Non-functional requirements
 

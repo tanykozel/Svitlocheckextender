@@ -31,7 +31,7 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
 ## Create the Telegram bot
 
 1. In Telegram, open [@BotFather](https://t.me/BotFather) (blue tick) and send `/newbot`.
-2. Enter a display name, e.g. `Світло Дім`, then a username ending in `bot`, e.g. `svitlo_dim_tk_bot`.
+2. Enter a display name, e.g. `Світло Житомир 💡 Графік відключень`, then a username ending in `bot`, e.g. `svitlo_lusia_zt_bot`.
 3. BotFather replies with a **token** like `123456789:AA...`. Treat it like a password: never post or commit it.
    If it leaks, send `/revoke` to BotFather to get a new one.
 4. Open your new bot (the `t.me/...` link BotFather gives you) and press **Start**.
