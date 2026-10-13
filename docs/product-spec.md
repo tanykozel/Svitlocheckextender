@@ -81,7 +81,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
   («✅ Адресу змінено»), the warning time is kept, and alert history restarts for the new queue.
 
 **US-9 Warning time** (Should)
-- /settings offers 15 / 30 / 60 minutes (current one ✓; default 30). With 60, the alert arrives ~50–60 minutes before.
+- /setting (Menu → «Коли попереджати») offers 15 / 30 / 60 minutes. It is not /settings, so Telegram's own Settings option is not taken over (current one ✓; default 30). With 60, the alert arrives ~50–60 minutes before.
 
 **US-10 How long, and the full picture** (Must)
 - Off alerts state the length and end time and link to the official schedule.
@@ -153,7 +153,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 85.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 86.
 
 ## 6. Success metrics
 - ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.

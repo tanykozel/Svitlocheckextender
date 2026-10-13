@@ -193,7 +193,7 @@ class AddressAndSettingsTests(BotTests.__base__):
 
     def test_change_address_replaces_old_one_and_keeps_lead(self):
         self.subscribe_sadova()
-        self.say("/settings", "btn:l:60")
+        self.say("/setting", "btn:l:60")
         self.state.subs["7"].alerts.sent["off@x"] = "2026-10-13T08:00:00+03:00"
         self.say("/change", "btn:r:16", "Сусли", "btn:s:179892")
         _, text, _ = self.say("14")
@@ -205,7 +205,7 @@ class AddressAndSettingsTests(BotTests.__base__):
 
     def test_settings_lead_time_changes_when_alerts_fire(self):
         self.subscribe_sadova()
-        _, text, buttons = self.say("/settings")
+        _, text, buttons = self.say("/setting")
         self.assertIn("Зараз: 30 хв", text)
         self.assertEqual([b[1] for b in buttons[0]], ["l:15", "l:30", "l:60"])
         self.assertTrue(buttons[0][1][0].startswith("✓"))
@@ -429,6 +429,18 @@ class MenuTests(unittest.TestCase):
         state = BotState(subs={"1": Subscription(3, 1, "A")})
         Bot(FakeDirectory(), lambda chat, text, buttons: sent.append(text), state).handle_text(1, "/test")
         self.assertTrue(any(t.startswith("🧪 ТЕСТ") for t in sent))
+
+    def test_warning_time_is_setting_so_telegrams_own_settings_is_free(self):
+        from svitlo_notifier.bot import HELP, MENU
+        commands = [command for command, _ in MENU]
+        self.assertIn("setting", commands)
+        self.assertNotIn("settings", commands)
+        self.assertNotIn("/settings", HELP)
+        for command in ("/setting", "/settings"):  # the old name still answers, e.g. from old messages
+            sent = []
+            state = BotState(subs={"1": Subscription(3, 1, "A")})
+            Bot(FakeDirectory(), lambda chat, text, buttons: sent.append(text), state).handle_text(1, command)
+            self.assertIn("За скільки хвилин", sent[-1])
 
 
 class BotNameTests(unittest.TestCase):

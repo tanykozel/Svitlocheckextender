@@ -31,7 +31,7 @@ If something isn't found, Люся asks you to check the spelling and waits for 
 | Обрати адресу | `/start` | start the address quiz. If you're already subscribed, Люся only reminds you of your address. |
 | Графік на сьогодні й завтра | `/schedule` | outage windows, their length, total hours without power, and the official link |
 | Стан за графіком | `/status` | what the **schedule** says now and the next changes (not the real power state) |
-| Коли попереджати | `/settings` | warn 15, **30** (default) or 60 minutes before each change |
+| Коли попереджати | `/setting` | warn 15, **30** (default) or 60 minutes before each change |
 | Змінити адресу | `/change` | choose another address. It **replaces** the current one: one address per person. |
 | Відписатися | `/stop` | stop all alerts |
 | Про Люсю і допомога | `/help` | short help |
@@ -166,7 +166,7 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 85 tests
+python -m unittest discover -s tests -v      # 86 tests
 ```
 
 ### How changes are made
