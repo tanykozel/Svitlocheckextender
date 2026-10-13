@@ -2,6 +2,10 @@
 
     python assets/make_lyusya_v2.py vinok OUT.png [PREVIEW.png]   # flower crown + bell
     python assets/make_lyusya_v2.py bow   OUT.png [PREVIEW.png]   # bow + phone with alert
+    python assets/make_lyusya_v2.py night OUT.png [PREVIEW.png]   # asleep under the moon: "світла немає"
+    python assets/make_lyusya_v2.py winter OUT.png [PREVIEW.png]  # hat + blue-yellow scarf, snowflakes
+    python assets/make_lyusya_v2.py powerbank OUT.png [PREVIEW.png]  # holding a charged powerbank
+    python assets/make_lyusya_v2.py heart OUT.png [PREVIEW.png]   # wink + heart: "дякую"
 """
 
 import math
@@ -33,6 +37,18 @@ def background() -> Image.Image:
     return Image.composite(Image.new("RGB", (S, S), (255, 228, 130)), img, glow)
 
 
+def night_background() -> Image.Image:
+    grad = Image.radial_gradient("L").resize((S, S))
+    img = Image.composite(Image.new("RGB", (S, S), (6, 10, 32)), Image.new("RGB", (S, S), (28, 40, 96)), grad)
+    d = ImageDraw.Draw(img)
+    for x, y, r in [(380, 420, 16), (640, 260, 11), (2050, 380, 14), (2280, 760, 10), (300, 1300, 12),
+                    (2260, 1500, 13), (1700, 220, 9), (520, 2000, 10), (2100, 2150, 12), (900, 520, 8)]:
+        d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 250, 210))
+    d.ellipse((1750, 330, 2150, 730), fill=(255, 236, 160))   # moon
+    d.ellipse((1850, 270, 2250, 670), fill=(18, 24, 64))       # ...made a crescent by the dark sky
+    return img
+
+
 def blur_dot(img, box, color, strength=150, radius=18):
     m = Image.new("L", (S, S), 0)
     ImageDraw.Draw(m).ellipse(box, fill=strength)
@@ -56,7 +72,7 @@ def flower(d, x, y, r, petal, center=(255, 200, 40)):
 
 
 def draw(variant: str) -> Image.Image:
-    img = background()
+    img = night_background() if variant == "night" else background()
     d = ImageDraw.Draw(img)
     bx, by, br = cx, cy - 150, 520
 
@@ -70,6 +86,14 @@ def draw(variant: str) -> Image.Image:
     if variant == "vinok":
         arm(d, bx + 400, by + 260, bx + 760, by - 120)   # raised, holding the bell
         arm(d, bx - 400, by + 260, bx - 700, by + 60)    # waving
+    elif variant == "night":
+        arm(d, bx + 400, by + 300, bx + 620, by + 520)   # relaxed, asleep
+        arm(d, bx - 400, by + 300, bx - 620, by + 520)
+    elif variant == "winter":
+        arm(d, bx + 400, by + 260, bx + 740, by - 140)   # waving
+        arm(d, bx - 400, by + 280, bx - 680, by + 160)
+    elif variant in ("powerbank", "heart"):
+        pass  # both hands hold something in front; drawn after the body
     else:
         arm(d, bx + 400, by + 280, bx + 700, by + 120)   # holding the phone
         arm(d, bx - 400, by + 260, bx - 740, by - 140)   # waving hello
@@ -89,6 +113,9 @@ def draw(variant: str) -> Image.Image:
 
     # Face: big eyes with lashes, open smile, cheeks.
     for ex in (bx - 185, bx + 185):
+        if variant == "night" or (variant == "heart" and ex < bx):
+            d.arc((ex - 85, by + 10, ex + 85, by + 150), start=200, end=340, fill=INK, width=30)   # closed / wink
+            continue
         d.ellipse((ex - 80, by - 20, ex + 80, by + 165), fill=INK)
         d.ellipse((ex - 44, by + 10, ex + 6, by + 60), fill=(255, 255, 255))
         d.ellipse((ex + 18, by + 92, ex + 42, by + 116), fill=(255, 255, 255))
@@ -97,8 +124,11 @@ def draw(variant: str) -> Image.Image:
             a = math.radians(-90 + side * 25 + k * 30)
             x0, y0 = ex + 70 * math.cos(a), by + 15 + 85 * math.sin(a)
             d.line((x0, y0, x0 + 58 * math.cos(a), y0 + 58 * math.sin(a)), fill=INK, width=22)
-    d.chord((bx - 125, by + 170, bx + 125, by + 370), start=0, end=180, fill=INK)          # open smile
-    d.chord((bx - 70, by + 270, bx + 70, by + 362), start=0, end=180, fill=(240, 110, 120))  # tongue
+    if variant == "night":
+        d.arc((bx - 70, by + 200, bx + 70, by + 300), start=20, end=160, fill=INK, width=24)    # sleepy smile
+    else:
+        d.chord((bx - 125, by + 170, bx + 125, by + 370), start=0, end=180, fill=INK)          # open smile
+        d.chord((bx - 70, by + 270, bx + 70, by + 362), start=0, end=180, fill=(240, 110, 120))  # tongue
     for chx in (bx - 315, bx + 315):
         img = blur_dot(img, (chx - 90, by + 175, chx + 90, by + 270), (255, 120, 120))
     d = ImageDraw.Draw(img)
@@ -123,6 +153,53 @@ def draw(variant: str) -> Image.Image:
         for k in (-1, 1):  # ringing lines
             d.arc((hx - 270, hy - 290, hx + 270, hy + 150), start=200 if k < 0 else 300, end=240 if k < 0 else 340,
                   fill=(255, 255, 255), width=26)
+    elif variant == "night":
+        # Sleeping cap and "Z z z": the light is off for now.
+        d.polygon([(bx - 330, by - 380), (bx + 260, by - 470), (bx + 620, by - 160)], fill=(70, 90, 190))
+        d.rounded_rectangle((bx - 360, by - 450, bx + 300, by - 330), radius=60, fill=(235, 240, 255))
+        d.ellipse((bx + 560, by - 230, bx + 700, by - 90), fill=(235, 240, 255))
+        for k, (zx, zy, zs) in enumerate([(bx - 560, by - 700, 150), (bx - 760, by - 900, 110), (bx - 900, by - 1050, 80)]):
+            w = 22 - k * 5
+            d.line((zx, zy, zx + zs, zy), fill=(235, 240, 255), width=w)
+            d.line((zx + zs, zy, zx, zy + zs), fill=(235, 240, 255), width=w)
+            d.line((zx, zy + zs, zx + zs, zy + zs), fill=(235, 240, 255), width=w)
+    elif variant == "winter":
+        # Knitted hat with a pompom, blue-yellow scarf, snowflakes.
+        d.chord((bx - 430, by - 640, bx + 430, by - 120), start=180, end=360, fill=(40, 110, 220))
+        d.rounded_rectangle((bx - 470, by - 420, bx + 470, by - 300), radius=50, fill=(255, 214, 0))
+        for k in range(-3, 4):
+            d.line((bx + k * 120, by - 620 + abs(k) * 25, bx + k * 120, by - 430), fill=(30, 90, 190), width=18)
+        d.ellipse((bx - 110, by - 790, bx + 110, by - 570), fill=(255, 255, 255))
+        d.rounded_rectangle((bx - 400, by + 380, bx + 400, by + 500), radius=50, fill=(40, 110, 220))
+        d.rounded_rectangle((bx + 140, by + 430, bx + 290, by + 820), radius=40, fill=(255, 214, 0))
+        for k in range(3):
+            d.line((bx + 150, by + 700 + k * 40, bx + 280, by + 700 + k * 40), fill=(40, 110, 220), width=14)
+        for sx, sy, r in [(420, 500, 70), (2150, 1000, 60), (380, 1500, 55), (2200, 1900, 70), (1950, 380, 45)]:
+            for a in range(0, 180, 60):
+                t = math.radians(a)
+                d.line((sx - r * math.cos(t), sy - r * math.sin(t), sx + r * math.cos(t), sy + r * math.sin(t)),
+                       fill=(255, 255, 255), width=14)
+    elif variant == "powerbank":
+        # Holding a charged powerbank with a lightning bolt, cable to her base.
+        pbx, pby = bx, by + 560
+        d.rounded_rectangle((pbx - 260, pby - 170, pbx + 260, pby + 170), radius=50, fill=(30, 36, 52))
+        d.rounded_rectangle((pbx - 225, pby - 135, pbx + 225, pby + 135), radius=34, fill=(60, 200, 110))
+        d.polygon([(pbx + 30, pby - 120), (pbx - 90, pby + 20), (pbx - 5, pby + 20), (pbx - 40, pby + 125),
+                   (pbx + 95, pby - 25), (pbx + 10, pby - 25)], fill=(255, 240, 120))
+        for k in range(4):
+            d.rounded_rectangle((pbx + 120, pby - 110 + k * 55, pbx + 200, pby - 75 + k * 55), radius=10,
+                                fill=(255, 255, 255))
+        arm(d, bx - 400, by + 260, pbx - 230, pby - 20)
+        arm(d, bx + 400, by + 260, pbx + 230, pby - 20)
+    elif variant == "heart":
+        # Holding a big heart: "дякую".
+        hx, hy, hr = bx, by + 560, 190
+        d.ellipse((hx - 2 * hr, hy - hr, hx, hy + hr * 0.9), fill=(230, 50, 70))
+        d.ellipse((hx, hy - hr, hx + 2 * hr, hy + hr * 0.9), fill=(230, 50, 70))
+        d.polygon([(hx - 2 * hr + 15, hy + 40), (hx + 2 * hr - 15, hy + 40), (hx, hy + 2.3 * hr)], fill=(230, 50, 70))
+        d.ellipse((hx - 1.5 * hr, hy - 0.6 * hr, hx - 0.9 * hr, hy - 0.1 * hr), fill=(255, 150, 160))
+        arm(d, bx - 400, by + 260, hx - 2 * hr + 30, hy + 30)
+        arm(d, bx + 400, by + 260, hx + 2 * hr - 30, hy + 30)
     else:
         # Big bow on top, and a phone with a red alert dot.
         bow_x, bow_y = bx + 260, by - 470
