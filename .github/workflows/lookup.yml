@@ -1,0 +1,55 @@
+name: Find my queue
+
+# Run from the Actions tab. Leave every field empty to list district offices (REM),
+# then fill in the id from the previous run to go one level deeper:
+# REM -> city -> street -> houses with their queue (черга X.Y).
+# Fill queue + subqueue to see the current schedule instead.
+on:
+  workflow_dispatch:
+    inputs:
+      rem:
+        description: "District (REM) id"
+        required: false
+      city:
+        description: "City id"
+        required: false
+      street:
+        description: "Street id"
+        required: false
+      queue:
+        description: "Queue (черга) - shows the schedule"
+        required: false
+      subqueue:
+        description: "Sub-queue (підчерга)"
+        required: false
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Look up
+        shell: bash # adds pipefail, so a failed lookup is not hidden by tee
+        env:
+          REM: ${{ inputs.rem }}
+          CITY: ${{ inputs.city }}
+          STREET: ${{ inputs.street }}
+          QUEUE: ${{ inputs.queue }}
+          SUBQUEUE: ${{ inputs.subqueue }}
+        run: |
+          if [ -n "$QUEUE" ]; then
+            python -m svitlo_notifier status --queue "$QUEUE" --subqueue "${SUBQUEUE:-1}"
+          elif [ -n "$STREET" ]; then
+            python -m svitlo_notifier lookup --street "$STREET"
+          elif [ -n "$CITY" ]; then
+            python -m svitlo_notifier lookup --city "$CITY"
+          elif [ -n "$REM" ]; then
+            python -m svitlo_notifier lookup --rem "$REM"
+          else
+            python -m svitlo_notifier lookup
+          fi | tee lookup.txt
+          { echo '```'; cat lookup.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
