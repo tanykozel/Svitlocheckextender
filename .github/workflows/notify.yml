@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   check:
+    # Stays idle until the queue is configured (Settings -> Secrets and variables -> Actions -> Variables).
+    if: vars.SVITLO_QUEUE != '' && vars.SVITLO_SUBQUEUE != ''
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

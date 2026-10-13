@@ -1,0 +1,21 @@
+name: Telegram setup
+
+# Run from the Actions tab: checks the bot token, lists your chat id,
+# and sends a test message once TELEGRAM_CHAT_ID is saved as a secret.
+on:
+  workflow_dispatch:
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check bot and chat
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m svitlo_notifier telegram-setup

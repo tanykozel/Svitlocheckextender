@@ -37,7 +37,14 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
 4. Open your new bot (the `t.me/...` link BotFather gives you) and press **Start**.
    Telegram bots cannot message you first, so this step is required.
    *Family alerts:* create a group, add the bot to it, and send any message in the group.
-5. Find your chat ID and send a test message:
+5. Find your chat ID and send a test message.
+
+   **In the browser (no install):** in the GitHub repo, open Settings → Secrets and variables → Actions,
+   and add the secret `TELEGRAM_BOT_TOKEN`. Then go to Actions → **Telegram setup** → **Run workflow**.
+   Open the finished run, and the "Check bot and chat" step lists your chat ID. Add it as the secret
+   `TELEGRAM_CHAT_ID` and run the workflow again to get the test message.
+
+   **On your computer** (Python 3.10+, in the repo folder; on Windows PowerShell use `$env:NAME='value'` instead of `export`):
 
    ```bash
    export TELEGRAM_BOT_TOKEN='123456789:AA...'
