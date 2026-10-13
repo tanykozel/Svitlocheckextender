@@ -18,7 +18,7 @@ from .api import ApiError
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, plan, schedule_text,
                       summary)
 from .secure import chat_tag
-from .schedule import KYIV, Event, EventKind, fingerprint, merge, transitions
+from .schedule import KYIV, Event, EventKind, Status, merge, status_at, transitions
 
 MAX_BUTTONS = 30
 MENU_VERSION = 5  # bump on every MENU change so Telegram's menu is refreshed
@@ -653,23 +653,51 @@ class Bot:
             self.track_schedule(key, raw, now)
 
     def track_schedule(self, key: tuple[int, int], raw: list[dict], now: datetime) -> None:
-        """Record when a queue's schedule for a day is published or changed (for the dashboard)."""
+        """Record when a queue's schedule for a day is published or changed (for the dashboard).
+
+        Each day is kept as 48 half-hour codes, so a change can be measured: how long before the
+        first edited half-hour it came (notice_min, negative = edited after the fact) and how much
+        outage it added or removed (more_off_min).
+        """
         name = f"{key[0]}.{key[1]}"
         first_look = name not in self.state.watch
         days = self.state.watch.setdefault(name, {})
         for day, intervals in by_day(raw).items():
             if day < now.date():
                 continue
-            digest, old = fingerprint(intervals), days.get(day.isoformat())
-            days[day.isoformat()] = digest
-            if first_look or old == digest:
+            codes, old = day_codes(day, intervals), days.get(day.isoformat())
+            days[day.isoformat()] = codes
+            if first_look or old == codes:
                 continue  # the first look is only a baseline
-            kind = "published" if old is None else "changed"
-            self.stats[f"schedule:{kind}"] += 1
-            self.schedule_events.append({"queue": name, "day": day.isoformat(), "kind": kind,
-                                         "at": now.isoformat(timespec="minutes")})
+            midnight = datetime.combine(day, datetime.min.time(), KYIV)
+            event = {"queue": name, "day": day.isoformat(), "at": now.isoformat(timespec="minutes")}
+            if old is None:
+                event.update(kind="published", notice_min=_minutes(midnight - now))
+            else:
+                event["kind"] = "changed"
+                if len(old) == len(codes):
+                    first = next(i for i, (a, b) in enumerate(zip(old, codes)) if a != b)
+                    event["notice_min"] = _minutes(midnight + timedelta(minutes=30 * first) - now)
+                    event["more_off_min"] = 30 * (codes.count("x") - old.count("x"))
+            self.stats[f"schedule:{event['kind']}"] += 1
+            self.schedule_events.append(event)
         for day in [d for d in days if d < (now.date() - timedelta(days=1)).isoformat()]:
             del days[day]
+
+
+def day_codes(day, intervals: list) -> str:
+    """A day's schedule as 48 half-hour codes: o = power, x = outage, p = possible outage, ? = unknown."""
+    midnight = datetime.combine(day, datetime.min.time(), KYIV)
+    code = {Status.AVAILABLE: "o", Status.OUTAGE: "x", Status.PROBABLE: "p"}
+    out = []
+    for i in range(48):
+        slot = status_at(intervals, midnight + timedelta(minutes=30 * i))
+        out.append(code.get(slot.status, "?") if slot else "?")
+    return "".join(out)
+
+
+def _minutes(delta: timedelta) -> int:
+    return int(delta.total_seconds() // 60)
 
 
 def _chat_of(update: dict) -> int | None:

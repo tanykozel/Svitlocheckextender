@@ -95,8 +95,23 @@ class ScheduleChangeTrackingTests(unittest.TestCase):
         self.assertEqual([(e["queue"], e["day"], e["kind"]) for e in self.bot.schedule_events],
                          [("1.2", "2026-10-14", "published"), ("1.2", "2026-10-14", "changed")])
         self.assertEqual(self.bot.stats["schedule:changed"], 1)
+        published, changed = self.bot.schedule_events
+        self.assertEqual(published["notice_min"], 9 * 60, "tomorrow published 9 h before midnight")
+        self.assertEqual(changed["notice_min"], 11 * 60, "first edited half-hour is 02:00 tomorrow")
+        self.assertEqual(changed["more_off_min"], 120, "two more hours without power")
         restored = BotState.from_dict(self.state.to_dict())
         self.assertEqual(restored.watch, self.state.watch)
+
+    def test_last_minute_and_after_the_fact_changes(self):
+        self.bot.track_schedule((1, 2), TODAY, self.now)
+        extra = day_slots("13.10.2026", {**block(8, 12), **block(16, 17), **block(18, 20, "yellow")})
+        self.bot.track_schedule((1, 2), extra, self.now)  # at 15:00, 16:00-17:00 becomes an outage
+        self.assertEqual(self.bot.schedule_events[-1]["notice_min"], 60)
+        self.assertEqual(self.bot.schedule_events[-1]["more_off_min"], 60)
+        earlier = day_slots("13.10.2026", {**block(8, 11), **block(16, 17), **block(18, 20, "yellow")})
+        self.bot.track_schedule((1, 2), earlier, self.now)  # the morning outage edited afterwards
+        self.assertEqual(self.bot.schedule_events[-1]["notice_min"], -240)
+        self.assertEqual(self.bot.schedule_events[-1]["more_off_min"], -60)
 
     def test_all_queues_are_watched_every_30_minutes(self):
         directory = FakeDirectory()
