@@ -69,21 +69,40 @@ def _clock(moment: datetime, now: datetime) -> str:
     return _hm(moment)
 
 
+def _at(moment: datetime, now: datetime) -> str:
+    """'о 20:00', 'завтра о 06:00' or '15.10 о 06:00' (the coming midnight stays 'о 24:00')."""
+    text = _clock(moment, now)
+    if text.startswith("завтра "):
+        return f"завтра о {text[len('завтра '):]}"
+    if " " in text:  # 'DD.MM HH:MM'
+        day, hm = text.split(" ")
+        return f"{day} о {hm}"
+    return f"о {text}"
+
+
+def _until(moment: datetime, now: datetime) -> str:
+    """'до 22:00', 'до 24:00', 'до 06:00 завтра'."""
+    text = _clock(moment, now)
+    if text.startswith("завтра "):
+        return f"до {text[len('завтра '):]} завтра"
+    return f"до {text}"
+
+
 def describe_event(event: Event, now: datetime, label: str, next_off: Event | None = None) -> str:
     minutes = max(1, round((event.at - now).total_seconds() / 60))
     prefix = f"[{label}] " if label else ""
     length = duration(event.until - event.at)
     if event.kind == EventKind.OFF:
-        return (f"{prefix}🔴 За ~{minutes} хв, о {_clock(event.at, now)}, мене вимкнуть 😔\n"
-                f"Без світла ~{length}, до {_clock(event.until, now)} (за графіком).\n"
+        return (f"{prefix}🔴 За ~{minutes} хв, {_at(event.at, now)}, мене вимкнуть 😔\n"
+                f"Без світла ~{length}, {_until(event.until, now)} (за графіком).\n"
                 "Заряди телефон і павербанк 🔋\n"
                 f"Повний графік: /schedule або {SCHEDULE_URL}")
     if event.kind == EventKind.POSSIBLE_OFF:
-        return (f"{prefix}🟡 Можливо, за ~{minutes} хв, о {_clock(event.at, now)}, мене вимкнуть - "
-                f"до {_clock(event.until, now)} (~{length}).\nКраще підготуйся заздалегідь 🔋")
-    text = f"{prefix}🟢 Я повертаюся! За ~{minutes} хв, о {_clock(event.at, now)}, світло мають увімкнути 💡"
+        return (f"{prefix}🟡 Можливо, за ~{minutes} хв, {_at(event.at, now)}, мене вимкнуть - "
+                f"{_until(event.until, now)} (~{length}).\nКраще підготуйся заздалегідь 🔋")
+    text = f"{prefix}🟢 Я повертаюся! За ~{minutes} хв, {_at(event.at, now)}, світло мають увімкнути 💡"
     if next_off is not None:
-        text += (f"\nНаступного разу мене вимкнуть о {_clock(next_off.at, now)} - "
+        text += (f"\nНаступного разу мене вимкнуть {_at(next_off.at, now)} - "
                  f"світло буде ~{duration(next_off.at - event.at)}.")
     else:
         text += "\nНаступних вимкнень за графіком поки немає 🎉"
