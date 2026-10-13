@@ -63,6 +63,14 @@ def arm(d, x0, y0, x1, y1, hand=True):
         d.ellipse((x1 - 56, y1 - 56, x1 + 56, y1 + 56), fill=YELLOW)
 
 
+def bow(d, x, y, scale=1.0, color=(40, 110, 220), knot=(20, 70, 160)):
+    """Люся's signature bow: she is a girl, so every look keeps it."""
+    w, h = 250 * scale, 170 * scale
+    for side in (-1, 1):
+        d.polygon([(x, y), (x + side * w, y - h), (x + side * w, y + h)], fill=color)
+    d.ellipse((x - 80 * scale, y - 80 * scale, x + 80 * scale, y + 80 * scale), fill=knot)
+
+
 def flower(d, x, y, r, petal, center=(255, 200, 40)):
     for k in range(6):
         a = math.radians(k * 60)
@@ -115,6 +123,11 @@ def draw(variant: str) -> Image.Image:
     for ex in (bx - 185, bx + 185):
         if variant == "night" or (variant == "heart" and ex < bx):
             d.arc((ex - 85, by + 10, ex + 85, by + 150), start=200, end=340, fill=INK, width=30)   # closed / wink
+            side = 1 if ex > bx else -1
+            for k in (0, 1, 2):  # lashes on the closed eye, so she still reads as a girl
+                a = math.radians(-90 + side * (35 + k * 25))
+                x0, y0 = ex + 80 * math.cos(a), by + 80 + 70 * math.sin(a)
+                d.line((x0, y0, x0 + 50 * math.cos(a), y0 + 50 * math.sin(a)), fill=INK, width=20)
             continue
         d.ellipse((ex - 80, by - 20, ex + 80, by + 165), fill=INK)
         d.ellipse((ex - 44, by + 10, ex + 6, by + 60), fill=(255, 255, 255))
@@ -158,6 +171,7 @@ def draw(variant: str) -> Image.Image:
         d.polygon([(bx - 330, by - 380), (bx + 260, by - 470), (bx + 620, by - 160)], fill=(70, 90, 190))
         d.rounded_rectangle((bx - 360, by - 450, bx + 300, by - 330), radius=60, fill=(235, 240, 255))
         d.ellipse((bx + 560, by - 230, bx + 700, by - 90), fill=(235, 240, 255))
+        bow(d, bx - 250, by - 400, 0.6, color=(255, 120, 170), knot=(220, 70, 130))
         for k, (zx, zy, zs) in enumerate([(bx - 560, by - 700, 150), (bx - 760, by - 900, 110), (bx - 900, by - 1050, 80)]):
             w = 22 - k * 5
             d.line((zx, zy, zx + zs, zy), fill=(235, 240, 255), width=w)
@@ -170,6 +184,7 @@ def draw(variant: str) -> Image.Image:
         for k in range(-3, 4):
             d.line((bx + k * 120, by - 620 + abs(k) * 25, bx + k * 120, by - 430), fill=(30, 90, 190), width=18)
         d.ellipse((bx - 110, by - 790, bx + 110, by - 570), fill=(255, 255, 255))
+        bow(d, bx + 300, by - 360, 0.55, color=(255, 120, 170), knot=(220, 70, 130))
         d.rounded_rectangle((bx - 400, by + 380, bx + 400, by + 500), radius=50, fill=(40, 110, 220))
         d.rounded_rectangle((bx + 140, by + 430, bx + 290, by + 820), radius=40, fill=(255, 214, 0))
         for k in range(3):
@@ -180,7 +195,8 @@ def draw(variant: str) -> Image.Image:
                 d.line((sx - r * math.cos(t), sy - r * math.sin(t), sx + r * math.cos(t), sy + r * math.sin(t)),
                        fill=(255, 255, 255), width=14)
     elif variant == "powerbank":
-        # Holding a charged powerbank with a lightning bolt, cable to her base.
+        bow(d, bx + 260, by - 470)
+        # Holding a charged powerbank with a lightning bolt.
         pbx, pby = bx, by + 560
         d.rounded_rectangle((pbx - 260, pby - 170, pbx + 260, pby + 170), radius=50, fill=(30, 36, 52))
         d.rounded_rectangle((pbx - 225, pby - 135, pbx + 225, pby + 135), radius=34, fill=(60, 200, 110))
@@ -192,6 +208,7 @@ def draw(variant: str) -> Image.Image:
         arm(d, bx - 400, by + 260, pbx - 230, pby - 20)
         arm(d, bx + 400, by + 260, pbx + 230, pby - 20)
     elif variant == "heart":
+        bow(d, bx + 260, by - 470, color=(255, 120, 170), knot=(220, 70, 130))
         # Holding a big heart: "дякую".
         hx, hy, hr = bx, by + 560, 190
         d.ellipse((hx - 2 * hr, hy - hr, hx, hy + hr * 0.9), fill=(230, 50, 70))
