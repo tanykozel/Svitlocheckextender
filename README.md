@@ -167,7 +167,7 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 86 tests
+python -m unittest discover -s tests -v      # 88 tests
 ```
 
 ### How changes are made

@@ -154,9 +154,15 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
 
 
 def _telegram_gone(exc: Exception) -> bool:
+    """True only when the person really left: blocked the bot, deleted the account, removed the bot.
+
+    "chat not found" and "can't initiate conversation" are NOT gone: after a switch to a new bot token,
+    people who have not pressed Start in the new bot yet get exactly these errors. They keep their
+    subscription and start receiving alerts as soon as they press Start.
+    """
     text = str(exc).lower()
     return isinstance(exc, TelegramError) and any(
-        marker in text for marker in ("blocked by the user", "chat not found", "user is deactivated", "kicked")
+        marker in text for marker in ("blocked by the user", "user is deactivated", "kicked")
     )
 
 
