@@ -69,7 +69,7 @@ or short text: **district → town/village → street → house**. The bot then 
 | `/start` | choose an address (one per person); if already subscribed, offers "change" or "keep" |
 | `/change` | pick a different address (replaces the current one) |
 | `/schedule` | today's and tomorrow's outage windows, their length, and total hours without power, plus a link to the official schedule |
-| `/status` | current state and the next changes for my address |
+| `/status` | what the **schedule** says now and the next changes (not the real power state, so emergency outages aren't visible) |
 | `/settings` | how many minutes before a change to warn: 15, 30 (default) or 60 |
 | `/test` | *(hidden: not in the menu or /help, but works when typed)* sends one example of every alert type for my address, marked "🧪 ТЕСТ" |
 | `/stop` | unsubscribe |

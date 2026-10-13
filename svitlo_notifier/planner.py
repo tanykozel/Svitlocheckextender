@@ -179,13 +179,14 @@ def summary(raw: list[dict], now: datetime, label: str = "") -> str:
     current = status_at(timeline, now)
     lines = [f"{label}" if label else "Стан:"]
     if current is None:
-        lines.append("Зараз: у графіку немає даних")
+        lines.append("Зараз за графіком: даних немає")
     else:
-        lines.append(f"Зараз: {_STATUS_UA[current.status.value]} ({_span(current)})")
+        lines.append(f"Зараз за графіком: {_STATUS_UA[current.status.value]} ({_span(current)})")
     upcoming = [e for e in transitions(timeline) if e.at > now][:6]
     if upcoming:
         lines.append("Далі за графіком:")
         lines += [f"• {_clock(e.at, now)} - {_EVENT_UA[e.kind.value]}" for e in upcoming]
     else:
         lines.append("Змін за графіком далі немає.")
+    lines.append("(Аварійні відключення я не бачу - лише графік.)")
     return "\n".join(lines)
