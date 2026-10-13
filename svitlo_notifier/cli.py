@@ -7,10 +7,12 @@ import json
 import os
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from .api import ApiError, GpvClient
+from .metrics import merge_from_files
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
@@ -159,6 +161,7 @@ def _telegram_gone(exc: Exception) -> bool:
 
 
 def cmd_bot(args: argparse.Namespace) -> int:
+    started = time.monotonic()
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token:
         _annotate("warning", "TELEGRAM_BOT_TOKEN is not set; the bot is idle")
@@ -209,6 +212,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
             updates = get_updates(token, state.offset, wait=wait)
             bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
         except TelegramError as exc:
+            bot.stats["failure:telegram_read"] += 1
             print(f"warning: could not read messages: {exc}")
             return 0
         # Save before alerts so answered messages are never processed twice.
@@ -222,6 +226,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
         now = datetime.now(KYIV)
         moved += bot.refresh_queues(now)
         sent += bot.send_alerts(now, is_gone=_telegram_gone)
+        bot.watch_all_queues(now)
         _write_json(path, state.to_dict())
 
     handled = read_and_answer(0)
@@ -239,11 +244,54 @@ def cmd_bot(args: argparse.Namespace) -> int:
         alerts()
     print(f"processed {handled} message(s)")
     print(f"subscribers: {len(state.subs)}, queues changed: {moved}, alerts sent: {sent}")
+    if args.metrics:
+        _write_metrics(Path(args.metrics), bot, me, handled, time.monotonic() - started)
     return 0
+
+
+def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
+    """One run's numbers for the owner dashboard. Aggregates only: no chat ids, names or addresses."""
+    groups: dict[str, dict[str, int]] = {"request": {}, "outcome": {}, "failure": {}, "schedule": {}}
+    for key, count in sorted(bot.stats.items()):
+        group, _, name = key.partition(":")
+        groups.setdefault(group, {})[name] = count
+    subs = bot.state.subs.values()
+    by_queue, by_lead = Counter(f"{s.queue}.{s.subqueue}" for s in subs), Counter(str(s.lead_minutes) for s in subs)
+    return {
+        "ts": datetime.now(KYIV).isoformat(timespec="seconds"),
+        "bot": me.get("username", ""),
+        "seconds": round(seconds, 1),
+        "subscribers": len(bot.state.subs),
+        "quizzes": len(bot.state.sessions),
+        "address_problems": sum(1 for s in subs if s.problem),
+        "by_queue": dict(sorted(by_queue.items())),
+        "by_lead": dict(sorted(by_lead.items())),
+        "processed": processed,
+        "requests": groups["request"],
+        "outcomes": groups["outcome"],
+        "failures": groups["failure"],
+        "schedule_events": bot.schedule_events,
+    }
+
+
+def _write_metrics(path: Path, bot: Bot, me: dict, processed: int, seconds: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(metrics_record(bot, me, processed, seconds), ensure_ascii=False, indent=1),
+                    encoding="utf-8")
 
 
 def _write_json(path: Path, data: dict) -> None:
     save_json(path, data, _state_key())
+
+
+def cmd_metrics_merge(args: argparse.Namespace) -> int:
+    folder = Path(args.into)
+    folder.mkdir(parents=True, exist_ok=True)
+    entry = merge_from_files(folder, Path(args.record),
+                             {"run_id": args.run_id, "event": args.event, "outcome": args.outcome, "url": args.url})
+    print(f"dashboard: run {entry.get('run_id', '?')} {entry.get('outcome')}, "
+          f"subscribers {entry.get('subscribers', '?')}, failures {sum(entry.get('failures', {}).values())}")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -260,7 +308,18 @@ def build_parser() -> argparse.ArgumentParser:
     bot.add_argument("--state", default=os.environ.get("SVITLO_BOT_STATE", ".state/bot.json"))
     bot.add_argument("--stay-minutes", type=float, default=float(os.environ.get("SVITLO_STAY_MINUTES") or 0),
                      help="keep listening this long for instant replies (for live testing); default 0")
+    bot.add_argument("--metrics", default=os.environ.get("SVITLO_METRICS", ""),
+                     help="write this run's dashboard numbers (no personal data) to this JSON file")
     bot.set_defaults(func=cmd_bot)
+
+    dash = sub.add_parser("metrics-merge", help="add a bot run's numbers to the dashboard data files")
+    dash.add_argument("--record", default=".metrics/run.json", help="the file `bot --metrics` wrote")
+    dash.add_argument("--into", required=True, help="folder with history.json, daily.json, events.json")
+    dash.add_argument("--run-id", default=os.environ.get("GITHUB_RUN_ID", ""))
+    dash.add_argument("--event", default=os.environ.get("GITHUB_EVENT_NAME", ""))
+    dash.add_argument("--outcome", default="success", help="success / failure / cancelled")
+    dash.add_argument("--url", default="")
+    dash.set_defaults(func=cmd_metrics_merge)
 
     tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
     tg.set_defaults(func=cmd_telegram_setup)
