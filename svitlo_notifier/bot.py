@@ -235,6 +235,12 @@ class Bot:
         self._unbutton = unbutton
         self.state = state
 
+    def retire_buttons(self, chat_id: int) -> None:
+        """Remove the buttons from the bot's last message with buttons, if any."""
+        message_id = self.state.keyboards.pop(str(chat_id), None)
+        if message_id is not None:
+            self._unbutton(chat_id, message_id)
+
     def send(self, chat_id: int, text: str, buttons: Buttons | None) -> None:
         """Send a message. A new set of buttons retires the previous one, so only the latest can be tapped."""
         chat = str(chat_id)
@@ -290,6 +296,7 @@ class Bot:
         if data == "a:change":
             self.ask_rem(chat_id)
         elif data == "a:keep":
+            self.retire_buttons(chat_id)
             self.send(chat_id, "Добре, залишаю твою адресу як є 👌", None)
         elif kind == "l":
             self.lead_chosen(chat_id, value)
@@ -309,6 +316,7 @@ class Bot:
             self.ask_rem(chat_id)
             return
         # No question here: changing the address is the user's own choice via the menu (/change).
+        self.retire_buttons(chat_id)  # e.g. an old "Змінити / Залишити" question
         self.send(chat_id, f"Я вже стежу за твоєю адресою: {sub.label} (черга {sub.queue}.{sub.subqueue}) 💡\n"
                            "Щоб змінити її, обери «Змінити адресу» в меню ☰.", None)
 

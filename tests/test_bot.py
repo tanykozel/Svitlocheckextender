@@ -509,3 +509,13 @@ class TypedAddressTests(unittest.TestCase):
         self.bot.handle_text(1, "999")
         self.assertIn("Не знайшла будинок «999»", self.sent[-1])
         self.assertNotIn("не розумію", " ".join(self.sent), "address answers are never 'not understood'")
+
+
+class RetireOldQuestionTests(unittest.TestCase):
+    def test_old_change_or_keep_buttons_disappear_on_next_start(self):
+        removed = []
+        state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Центральна")}, keyboards={"7": 555})
+        bot = Bot(FakeDirectory(), lambda chat, text, buttons: None, state, unbutton=lambda c, m: removed.append((c, m)))
+        bot.handle_text(7, "/start")
+        self.assertEqual(removed, [(7, 555)], "the old Змінити/Залишити buttons are taken off")
+        self.assertNotIn("7", state.keyboards)
