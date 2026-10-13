@@ -444,15 +444,15 @@ class MenuTests(unittest.TestCase):
 
 
 class BotNameTests(unittest.TestCase):
-    """Renaming the bot (@svitlo_dim_tk_bot -> @svitlo_lusia_zt_bot) must not change behaviour."""
+    """Renaming the bot (@svitlo_dim_tk_bot -> @Svitlo_Lyusia_zt_bot) must not change behaviour."""
 
     def test_commands_work_with_any_bot_name_suffix(self):
         from svitlo_notifier.bot import latest_requests
-        for text in ("/start", "/start@svitlo_lusia_zt_bot", "/start@svitlo_dim_tk_bot", "/START@Svitlo_Lusia_ZT_bot"):
+        for text in ("/start", "/start@Svitlo_Lyusia_zt_bot", "/start@svitlo_dim_tk_bot", "/START@Svitlo_Lusia_ZT_bot"):
             sent = []
             Bot(FakeDirectory(), lambda chat, t, b: sent.append(t), BotState()).handle_text(1, text)
             self.assertTrue(any("1/4" in t for t in sent), text)
-        updates = [{"update_id": 1, "message": {"chat": {"id": 1}, "text": "/start@svitlo_lusia_zt_bot"}},
+        updates = [{"update_id": 1, "message": {"chat": {"id": 1}, "text": "/start@Svitlo_Lyusia_zt_bot"}},
                    {"update_id": 2, "message": {"chat": {"id": 1}, "text": "/start"}}]
         self.assertEqual(len(latest_requests(updates)), 1, "both spellings count as the same /start")
 
