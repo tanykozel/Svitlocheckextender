@@ -60,7 +60,11 @@ For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT
 
 ## Setup
 
-Requires Python 3.10+ and nothing else (standard library only).
+**No install needed:** in the GitHub repo, open Actions → **Find my queue** → Run workflow. Run it with all fields
+empty to list districts (REM), then fill in the id from the run summary to go one level deeper
+(city → street → houses with their `черга X.Y`). Fill *queue* and *sub-queue* to see your current schedule.
+
+**On your computer:** requires Python 3.10+ and nothing else (standard library only).
 
 ```bash
 # 1. Find your queue: REM (district) -> city -> street -> house
