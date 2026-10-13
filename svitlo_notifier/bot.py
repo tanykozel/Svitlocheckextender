@@ -21,14 +21,14 @@ from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, Status, merge, status_at, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 5  # bump on every MENU change so Telegram's menu is refreshed
+MENU_VERSION = 6  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
     ("start", "Обрати адресу"),
     ("schedule", "Графік на сьогодні й завтра"),
     ("status", "Стан за графіком"),
-    ("settings", "Коли попереджати"),
+    ("setting", "Коли попереджати"),
     ("change", "Змінити адресу"),
     ("stop", "Відписатися"),
     ("help", "Про Люсю і допомога"),
@@ -229,7 +229,7 @@ HELP = (
     "/change - змінити адресу\n"
     "/schedule - графік на сьогодні й завтра\n"
     "/status - стан за графіком зараз (без урахування аварійних відключень)\n"
-    "/settings - за скільки хвилин попереджати\n"
+    "/setting - за скільки хвилин попереджати\n"
     "/stop - відписатися\n\n"
     f"Графік перевіряю приблизно кожні {CHECK_EVERY_MIN} хв, тож відповідаю не миттєво - трохи терпіння 🙏\n"
     "Аварійні відключення, на жаль, передбачити не можу.\n"
@@ -275,7 +275,7 @@ class Bot:
             self.start(chat_id)
         elif command in ("/change", "/address"):
             self.ask_rem(chat_id)
-        elif command == "/settings":
+        elif command in ("/setting", "/settings"):
             self.ask_lead(chat_id)
         elif command == "/schedule":
             self.schedule(chat_id)
@@ -494,7 +494,7 @@ class Bot:
         self.send(chat_id, f"{head}! {label}: черга {queue}.{subqueue}.\n"
                            f"Тепер я попереджатиму тебе за {lead} хв до вимкнення і ввімкнення світла, "
                            "скажу, скільки мене не буде, і повідомлю, якщо графік зміниться 💡\n\n"
-                           "/schedule - графік · /settings - коли попереджати · /change - інша адреса · "
+                           "/schedule - графік · /setting - коли попереджати · /change - інша адреса · "
                            "/stop - відписатися", None)
 
     def status(self, chat_id: int) -> None:
@@ -548,7 +548,7 @@ class Bot:
             return "media" if message else "other"
         if text.startswith("/"):
             command = text.split()[0].lower().split("@")[0]
-            known = {"/start", "/subscribe", "/change", "/address", "/settings", "/schedule", "/test", "/demo",
+            known = {"/start", "/subscribe", "/change", "/address", "/setting", "/settings", "/schedule", "/test", "/demo",
                      "/stop", "/status", "/help"}
             return command if command in known else "unknown_command"
         chat = str(message.get("chat", {}).get("id"))

@@ -92,7 +92,7 @@ a { color: var(--series-1); }
     <p class="note">Numbers only. Chat ids, names and addresses never leave the encrypted bot state.</p>
     <div class="tiles" id="sub-tiles"></div>
     <div class="grid2">
-      <div class="card"><h3>Active subscribers over time</h3><p class="note">After each bot run</p>
+      <div class="card"><h3>Active subscribers over time</h3><p class="note">After each bot run · dashed vertical line = new version</p>
         <div class="chart"><canvas id="c-subs"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-subs"></div></details></div>
       <div class="card"><h3>Subscribers by queue</h3><p class="note">Черга.підчерга, right now</p>
         <div class="chart"><canvas id="c-queue"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-queue"></div></details></div>
@@ -106,7 +106,7 @@ a { color: var(--series-1); }
     <div class="grid2">
       <div class="card"><h3>Requests by type</h3><p class="note">What people sent the bot in the selected range</p>
         <div class="chart"><canvas id="c-req"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-req"></div></details></div>
-      <div class="card"><h3>Minutes between runs</h3><p class="note">Above 10 means GitHub started the bot late (risk R4)</p>
+      <div class="card"><h3>Minutes between runs</h3><p class="note">Above 10 means GitHub started the bot late (risk R4). Dashed vertical line = new version deployed.</p>
         <div class="chart"><canvas id="c-gap"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-gap"></div></details></div>
     </div>
     <div class="card" style="margin-top:12px"><h3>Failures and how to fix them</h3><p class="note">In the selected range</p>
@@ -116,7 +116,15 @@ a { color: var(--series-1); }
   </section>
 
   <section>
-    <h2>3. Context: how often the schedule changes</h2>
+    <h2>3. Releases &amp; deploys</h2>
+    <p class="note">A deploy = the first run of a new code version on <code>main</code> (after a merge). Did it start well, and did it break anything?</p>
+    <div class="tiles" id="deploy-tiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Deploys</h3><p class="note">Newest first. «Broke something» = a failed run or a crash within 1 hour of the deploy (ZTOE or Telegram outages don't count).</p>
+      <div class="table-wrap" id="t-deploys"></div></div>
+  </section>
+
+  <section>
+    <h2>4. Context: how often the schedule changes</h2>
     <p class="note">Люся looks at all 12 queues every ~30 min. «Published» = a day's schedule appeared; «changed» = an already published day was edited.</p>
     <div class="controls"><div class="seg" id="period">
       <button type="button" data-p="day" aria-pressed="true">Per day</button>
@@ -143,7 +151,7 @@ a { color: var(--series-1); }
 const TZ = "Europe/Kyiv";
 const REQUEST_NAMES = {
   "/start": "/start", "/subscribe": "/start", "/change": "/change", "/address": "/change", "/schedule": "/schedule",
-  "/status": "/status", "/settings": "/settings", "/stop": "/stop", "/help": "/help", "/test": "/test", "/demo": "/test",
+  "/status": "/status", "/setting": "/setting", "/settings": "/setting", "/stop": "/stop", "/help": "/help", "/test": "/test", "/demo": "/test",
   button: "Button taps", quiz_answer: "Typed address answers", unknown_text: "Text not understood",
   unknown_command: "Unknown commands", media: "Stickers / photos / voice", other: "Other",
 };
@@ -169,12 +177,25 @@ const hm = m => { m = Math.round(m); const h = Math.floor(m / 60), r = m % 60; r
 const sum = o => Object.values(o || {}).reduce((a, b) => a + b, 0);
 const ago = d => { const m = Math.round((Date.now() - d) / 60000); return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 
+function repoInfo() {
+  const pages = location.hostname.endsWith(".github.io");
+  return { owner: pages ? location.hostname.split(".")[0] : "tanykozel",
+           repo: pages ? (location.pathname.split("/")[1] || "Svitlocheckextender") : "Svitlocheckextender" };
+}
 function dataBase() {
   const q = new URLSearchParams(location.search).get("data");
   if (q) return q.endsWith("/") ? q : q + "/";
-  const owner = location.hostname.endsWith(".github.io") ? location.hostname.split(".")[0] : "tanykozel";
-  const repo = location.hostname.endsWith(".github.io") ? (location.pathname.split("/")[1] || "Svitlocheckextender") : "Svitlocheckextender";
+  const { owner, repo } = repoInfo();
   return `https://raw.githubusercontent.com/${owner}/${repo}/metrics/`;
+}
+const repoUrl = () => `https://github.com/${repoInfo().owner}/${repoInfo().repo}`;
+async function loadTags() {  // release tags -> commit, so a version shows as "v0.3.2" instead of a commit id
+  const q = new URLSearchParams(location.search).get("tags");
+  const { owner, repo } = repoInfo();
+  try {
+    const r = await fetch(q || `https://api.github.com/repos/${owner}/${repo}/tags?per_page=100`);
+    return r.ok ? (await r.json()).map(t => ({ name: t.name, sha: String(t.commit?.sha || "").slice(0, 7) })) : [];
+  } catch (e) { return []; }
 }
 async function load(name) {
   try { const r = await fetch(dataBase() + name + "?t=" + Date.now(), { cache: "no-store" }); return r.ok ? r.json() : null; }
@@ -192,6 +213,23 @@ function table(headers, rows, numericFrom = 1) {
   return `<table><thead><tr>${th}</tr></thead><tbody>${tr}</tbody></table>`;
 }
 
+// Dashed vertical line at each index in options.plugins.versionMarks.at: a new code version went live there.
+const versionMarks = {
+  id: "versionMarks",
+  afterDatasetsDraw(c, _args, o) {
+    if (!o || !o.at || !o.at.length) return;
+    const { ctx, chartArea: a, scales: { x } } = c;
+    ctx.save(); ctx.strokeStyle = css("--muted"); ctx.fillStyle = css("--muted"); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+    ctx.font = "11px system-ui, sans-serif"; ctx.textAlign = "left";
+    o.at.forEach(({ i, label }) => {
+      const px = x.getPixelForValue(i);
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      ctx.fillText(label, Math.min(px + 3, a.right - 40), a.top + 10);
+    });
+    ctx.restore();
+  },
+};
+
 function chart(id, type, labels, datasets, opts = {}) {
   if (charts[id]) charts[id].destroy();
   const canvas = document.getElementById(id);
@@ -202,7 +240,7 @@ function chart(id, type, labels, datasets, opts = {}) {
   const ink = css("--text-secondary"), grid = css("--grid"), muted = css("--muted");
   const horizontal = opts.horizontal;
   charts[id] = new Chart(canvas, {
-    type, data: { labels, datasets: datasets.map(d => ({
+    type, plugins: [versionMarks], data: { labels, datasets: datasets.map(d => ({
       borderWidth: type === "line" ? 2 : 0, pointRadius: type === "line" ? (labels.length > 60 ? 0 : 3) : undefined,
       pointHoverRadius: 5, borderRadius: type === "bar" ? 4 : 0, borderSkipped: "start", tension: 0,
       maxBarThickness: 28, ...d })) },
@@ -211,6 +249,7 @@ function chart(id, type, labels, datasets, opts = {}) {
       responsive: true, maintainAspectRatio: false, indexAxis: horizontal ? "y" : "x",
       interaction: { mode: "index", intersect: false },
       plugins: {
+        versionMarks: { at: opts.marks || [] },
         legend: { display: datasets.length > 1, labels: { color: ink, boxWidth: 12, boxHeight: 12, useBorderRadius: true, borderRadius: 2 } },
         tooltip: { backgroundColor: css("--surface-1"), titleColor: css("--text-primary"), bodyColor: ink,
           borderColor: css("--baseline"), borderWidth: 1, padding: 10, boxPadding: 4 },
@@ -250,7 +289,7 @@ function renderSubscribers() {
   }
   pts.reverse();
   chart("c-subs", "line", pts.map(r => fmtShort(r.date)), [{ label: "Subscribers", data: pts.map(r => r.subscribers),
-    borderColor: css("--series-1"), backgroundColor: css("--series-1") }]);
+    borderColor: css("--series-1"), backgroundColor: css("--series-1") }], { marks: marksFor(pts) });
   document.getElementById("t-subs").innerHTML = table(["Time", "Subscribers"], pts.slice(-48).reverse().map(r => [fmtShort(r.date), r.subscribers]));
 
   const q = Object.entries(last?.by_queue || {}).sort();
@@ -267,7 +306,7 @@ function renderHealth() {
   ranged.forEach(r => Object.entries(r.failures || {}).forEach(([k, v]) => failures[k] = (failures[k] || 0) + v));
   const realFailures = Object.entries(failures).filter(([k]) => k !== "chat_gone").reduce((a, [, v]) => a + v, 0);
   const gaps = [];
-  for (let i = 1; i < history.length; i++) gaps.push({ date: history[i].date, min: (history[i].date - history[i - 1].date) / 60000 });
+  for (let i = 1; i < history.length; i++) gaps.push({ date: history[i].date, sha: history[i].sha, min: (history[i].date - history[i - 1].date) / 60000 });
   const rangedGaps = gaps.filter(g => Date.now() - g.date <= rangeHours * 3600e3);
   const longest = rangedGaps.reduce((a, g) => Math.max(a, g.min), 0);
   const sinceLast = last ? (Date.now() - last.date) / 60000 : Infinity;
@@ -296,7 +335,7 @@ function renderHealth() {
   chart("c-gap", "line", rangedGaps.map(g => fmtShort(g.date)), [
     { label: "Minutes since previous run", data: rangedGaps.map(g => Math.round(g.min)), borderColor: css("--series-1"), backgroundColor: css("--series-1") },
     { label: "Target (10 min)", data: target, borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [4, 4], pointRadius: 0, borderWidth: 1 },
-  ], { empty: "Needs at least two runs" });
+  ], { empty: "Needs at least two runs", marks: marksFor(rangedGaps) });
   document.getElementById("t-gap").innerHTML = table(["Run", "Minutes since previous"], rangedGaps.slice(-48).reverse().map(g => [fmtShort(g.date), Math.round(g.min)]));
 
   const failRows = Object.entries(failures).sort((a, b) => b[1] - a[1]).map(([k, v]) => {
@@ -365,7 +404,72 @@ function renderSchedule() {
   document.getElementById("t-squeue").innerHTML = table(["Queue", "Changes"], qRows);
 }
 
-function renderAll() { renderSubscribers(); renderHealth(); renderSchedule(); }
+let tags = [];
+const versionName = sha => (tags.find(t => t.sha === sha) || {}).name || sha;
+function marksFor(points) {  // indices where the code version changes between consecutive points
+  const out = [];
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].sha && points[i - 1].sha && points[i].sha !== points[i - 1].sha) out.push({ i, label: versionName(points[i].sha) });
+  }
+  return out;
+}
+const CAUSED_BY_CODE = ["run_crashed", "bad_update"];  // ZTOE / Telegram outages are not the code's fault
+const isBad = r => (r.outcome && r.outcome !== "success") || CAUSED_BY_CODE.some(k => (r.failures || {})[k]);
+
+function deploysOf(runs) {
+  const deploys = [];
+  runs.filter(r => r.sha).forEach(r => {
+    let d = deploys[deploys.length - 1];
+    if (!d || d.sha !== r.sha) { d = { sha: r.sha, start: r.date, runs: [] }; deploys.push(d); }
+    d.runs.push(r);
+  });
+  deploys.forEach(d => {
+    d.firstOk = !isBad(d.runs[0]);
+    d.broke = d.runs.some(r => r.date - d.start <= 3600e3 && isBad(r));
+    d.failed = d.runs.filter(r => r.outcome && r.outcome !== "success").length;
+    d.alerts = d.runs.reduce((a, r) => a + ((r.outcomes || {}).alert_sent || 0), 0);
+    d.failures = d.runs.reduce((a, r) => a + Object.entries(r.failures || {}).filter(([k]) => k !== "chat_gone").reduce((b, [, v]) => b + v, 0), 0);
+  });
+  return deploys;
+}
+function restoreTimes(runs) {  // from the first bad run to the next good one
+  const out = []; let badSince = null;
+  runs.forEach(r => {
+    if (isBad(r)) { if (badSince === null) badSince = r.date; }
+    else if (badSince !== null) { out.push({ at: r.date, min: (r.date - badSince) / 60000 }); badSince = null; }
+  });
+  return out;
+}
+
+function renderDeploys() {
+  const deploys = deploysOf(history);
+  const live = deploys[deploys.length - 1];
+  const month = deploys.filter(d => Date.now() - d.start <= 30 * 86400e3);
+  const broken = month.filter(d => d.broke).length;
+  const restores = restoreTimes(history).filter(t => Date.now() - t.at <= 30 * 86400e3).map(t => t.min).sort((a, b) => a - b);
+  const medianRestore = restores.length ? restores[Math.floor(restores.length / 2)] : null;
+  const link = sha => `<a href="${repoUrl()}/commit/${esc(sha)}" target="_blank" rel="noopener">${esc(versionName(sha))}</a>`;
+  const liveStatus = !live ? null : live.runs.some(isBad) && isBad(live.runs[live.runs.length - 1]) ? "critical" : live.broke ? "warning" : "good";
+  document.getElementById("deploy-tiles").innerHTML = [
+    tile("Live version", live ? versionName(live.sha) : "–", live ? `since ${fmtShort(live.start)} · ${live.runs.length} runs` : "recorded from the next run", liveStatus),
+    tile("First run after deploy", live ? (live.firstOk ? "OK" : "Failed") : "–", "smoke check: did the new version start?", live ? (live.firstOk ? "good" : "critical") : null),
+    tile("Since this deploy", live ? `${live.failures} failures` : "–", live ? `${live.failed} failed runs · ${live.alerts} alerts sent` : ""),
+    tile("Deploys in 30 days", month.length, month.length ? `${(month.length / 4.3).toFixed(1)} per week` : "deployment frequency"),
+    tile("Change failure rate", month.length ? `${Math.round(100 * broken / month.length)}%` : "–", month.length ? `${broken} of ${month.length} deploys broke something` : "deploys that broke something",
+      month.length ? (broken / month.length > 0.15 ? "serious" : broken ? "warning" : "good") : null),
+    tile("Time to restore", medianRestore === null ? "–" : hm(medianRestore), restores.length ? `median of ${restores.length} incident(s), 30 days` : "no incidents in 30 days"),
+  ].join("");
+  const rows = deploys.slice().reverse().slice(0, 30).map(d => [
+    link(d.sha), fmtShort(d.start), d.runs.length, d.failed, d.failures, d.alerts,
+    d.broke ? `<span class="status"><span class="dot" style="background:var(--critical)"></span>✕ Broke something</span>`
+            : `<span class="status"><span class="dot" style="background:var(--good)"></span>✓ Healthy</span>`]);
+  document.getElementById("t-deploys").innerHTML = rows.length
+    ? `<table><thead><tr><th>Version</th><th>Deployed</th><th class="num">Runs</th><th class="num">Failed runs</th><th class="num">Failures</th><th class="num">Alerts</th><th>Status</th></tr></thead><tbody>${
+        rows.map(r => `<tr>${r.map((c, i) => `<td class="${i >= 2 && i <= 5 ? "num" : ""}">${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`
+    : `<div class="empty">Versions are recorded from the next bot run</div>`;
+}
+
+function renderAll() { renderSubscribers(); renderHealth(); renderDeploys(); renderSchedule(); }
 
 function wireSeg(id, attr, apply) {
   document.getElementById(id).addEventListener("click", e => {
@@ -391,8 +495,11 @@ document.getElementById("theme").addEventListener("click", () => {
 
 (async function main() {
   try { setTheme(localStorage.getItem("dash-theme") || "auto"); } catch (e) { setTheme("auto"); }
-  const [h, ev] = await Promise.all([load("history.json"), load("events.json")]);
-  history = (h || []).map(r => ({ ...r, date: new Date(r.ts) })).filter(r => !isNaN(r.date)).sort((a, b) => a.date - b.date);
+  const [h, ev, t] = await Promise.all([load("history.json"), load("events.json"), loadTags()]);
+  tags = t;
+  // Production only: runs from main (older runs have no branch recorded). Test-branch runs never count here.
+  history = (h || []).map(r => ({ ...r, date: new Date(r.ts) })).filter(r => !isNaN(r.date) && (!r.ref || r.ref === "main"))
+    .sort((a, b) => a.date - b.date);
   events = ev || [];
   document.getElementById("updated").textContent = h ? `Updated ${fmtShort(new Date())} · ${history.length} runs loaded`
     : "No data yet: it appears after the first bot run with this version.";
