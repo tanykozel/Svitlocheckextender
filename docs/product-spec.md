@@ -153,7 +153,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 86.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 88.
 
 ## 6. Success metrics
 - ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.
