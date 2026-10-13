@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Product | Telegram bot, display name «Світло Житомир 💡 Графік відключень»; target username **@svitlo_lusia_zt_bot** |
+| Product | Telegram bot, display name «Світло Житомир 💡 Графік відключень»; username **@Svitlo_Lyusia_zt_bot** (live since 13.10, 21:00) |
 | Status | **v0.3 live** (GitHub Actions, public repo). Real-scenario UAT on 2026-10-13. v0.4 (Cloudflare) planned. |
 | Owner | Tetiana Kozel |
 | How it was built | Product decisions, requirements and testing by the owner; design and code produced with an AI assistant (Claude Code) |
@@ -171,7 +171,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 | R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Open (low) | Fine while the bot runs; v0.4 moves to durable storage. |
 | R8 | Public repo: logs public; fork PRs could read the cache | **Mitigated** | Encryption, no chat ids in logs, approval required for outside PR workflows. |
 | A1 | Slot colours: red = outage, yellow = possible, white/green = power | Partly verified | Live data shows white/red as expected; yellow not yet seen. |
-| D1 | Final username @svitlo_lusia_zt_bot | Decided, **switch pending** | The running token still belongs to the first bot (renamed). Switching = put the new bot's token in `TELEGRAM_BOT_TOKEN`; subscriptions are kept automatically. |
+| D1 | Final username @Svitlo_Lyusia_zt_bot | **Done 13.10** | New bot created; token switched; both subscriptions kept (hotfix v0.3.4 stops "chat not found" from unsubscribing people who haven't pressed Start yet). The old @svitlo_dim_tk_bot becomes the test bot. |
 | D2 | Persona «Світло Люся» with a functional display name | Decided | Section 4a. |
 | D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
 | Q1 | bezsvitla.com.ua as an extra source? | Open | Third-party aggregator; ZTOE stays primary. |
@@ -180,7 +180,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 ## 8. Roadmap
 | When | Item |
 |---|---|
-| Now | Real-scenario UAT on the live schedule (queue 1.2: off 20:00, on 22:00, 2026-10-13); token switch to @svitlo_lusia_zt_bot |
+| Now | Real-scenario UAT on the live schedule (queue 1.2: off 20:00, on 22:00, 2026-10-13); token switch to @Svitlo_Lyusia_zt_bot ✅ done |
 | Next (v0.4) | **Cloudflare Workers**: Telegram webhook (≈1 s replies), cron every minute (punctual alerts), D1/KV storage. $0 on the free plan. |
 | Later | Send Люся's sticker with each alert · several addresses per person (Q2) · sticker pack publishing · home power sensor epic |
 
