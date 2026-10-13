@@ -1,4 +1,4 @@
-# Product spec: «Лампочка Люся 💡», advance outage alerts for Zhytomyr oblast
+# Product spec: «Світло Люся 💡», advance outage alerts for Zhytomyr oblast
 
 | | |
 |---|---|
@@ -121,7 +121,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - **Privacy:** only aggregate numbers are published (the `metrics` branch of a public repo). Chat ids, names and addresses never appear; a test checks this.
 - A failed or crashed run is still recorded, so it shows up on the dashboard. Every chart has a table view and supports dark mode.
 
-## 4a. Voice & tone: persona «Лампочка Люся 💡»
+## 4a. Voice & tone: persona «Світло Люся 💡»
 | Rule | Example |
 |---|---|
 | Speaks in the first person, as the light itself (feminine forms) | «мене вимкнуть», «знайшла», «я повертаюся» |
@@ -137,7 +137,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 **BotFather texts:**
 - About: «Я Люся 💡 Попереджаю про вимкнення і ввімкнення світла на Житомирщині, заздалегідь і з графіком.»
-- Description: «Привіт! Я Лампочка Люся 💡 Попереджу тебе: 🔴 за 15, 30 або 60 хв до вимкнення світла і скажу, скільки його
+- Description: «Привіт! Я Світло Люся 💡 Попереджу тебе: 🔴 за 15, 30 або 60 хв до вимкнення світла і скажу, скільки його
   не буде; 🟢 коли світло повернеться; 📅 якщо графік зміниться. Дані з графіка Житомиробленерго. Без реєстрації: обери
   адресу за 4 кроки. Тисни «Start» 👇»
 
@@ -171,7 +171,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 | R8 | Public repo: logs public; fork PRs could read the cache | **Mitigated** | Encryption, no chat ids in logs, approval required for outside PR workflows. |
 | A1 | Slot colours: red = outage, yellow = possible, white/green = power | Partly verified | Live data shows white/red as expected; yellow not yet seen. |
 | D1 | Final username @svitlo_lusia_zt_bot | Decided, **switch pending** | The running token still belongs to the first bot (renamed). Switching = put the new bot's token in `TELEGRAM_BOT_TOKEN`; subscriptions are kept automatically. |
-| D2 | Persona «Лампочка Люся» with a functional display name | Decided | Section 4a. |
+| D2 | Persona «Світло Люся» with a functional display name | Decided | Section 4a. |
 | D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
 | Q1 | bezsvitla.com.ua as an extra source? | Open | Third-party aggregator; ZTOE stays primary. |
 | Q2 | Several addresses per person (home + parents)? | Open | Candidate after v0.4. |
