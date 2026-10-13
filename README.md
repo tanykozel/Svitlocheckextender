@@ -25,8 +25,31 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
    [iOS](https://apps.apple.com/app/ntfy/id1625396347)), tap **+**, and subscribe to a topic name you invent,
    for example `svitlo-dim-k7x29q`. Anyone who knows the topic can read it, so make the name hard to guess.
    Set `NTFY_TOPIC` to the same name.
-2. **Telegram**. Create a bot with [@BotFather](https://t.me/BotFather), send it any message, and set
-   `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`. Telegram then delivers the alerts as normal push notifications.
+2. **Telegram**. Your own bot sends the alerts, and Telegram shows them as normal push notifications.
+   See [Create the Telegram bot](#create-the-telegram-bot).
+
+## Create the Telegram bot
+
+1. In Telegram, open [@BotFather](https://t.me/BotFather) (blue tick) and send `/newbot`.
+2. Enter a display name, e.g. `Світло Дім`, then a username ending in `bot`, e.g. `svitlo_dim_tk_bot`.
+3. BotFather replies with a **token** like `123456789:AA...`. Treat it like a password: never post or commit it.
+   If it leaks, send `/revoke` to BotFather to get a new one.
+4. Open your new bot (the `t.me/...` link BotFather gives you) and press **Start**.
+   Telegram bots cannot message you first, so this step is required.
+   *Family alerts:* create a group, add the bot to it, and send any message in the group.
+5. Find your chat ID and send a test message:
+
+   ```bash
+   export TELEGRAM_BOT_TOKEN='123456789:AA...'
+   python -m svitlo_notifier telegram-setup          # shows the bot name and your chat id
+   export TELEGRAM_CHAT_ID='<id from the list>'      # group ids start with -100
+   python -m svitlo_notifier telegram-setup          # sends "✅ Svitlo notifier підключено"
+   ```
+
+6. Optional polish in BotFather: `/setuserpic` for an avatar, and `/setdescription` for the text people see before pressing Start.
+
+For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
+(Settings → Secrets and variables → Actions).
 
 ## Setup
 
