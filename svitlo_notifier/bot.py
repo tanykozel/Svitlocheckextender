@@ -308,9 +308,9 @@ class Bot:
             self.send(chat_id, "Привіт! Я Лампочка Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
             self.ask_rem(chat_id)
             return
-        self.send(chat_id, f"Твоя адреса: {sub.label} (черга {sub.queue}.{sub.subqueue}).\n"
-                           "Я стежу лише за однією адресою на людину. Змінимо?",
-                  [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
+        # No question here: changing the address is the user's own choice via the menu (/change).
+        self.send(chat_id, f"Я вже стежу за твоєю адресою: {sub.label} (черга {sub.queue}.{sub.subqueue}) 💡\n"
+                           "Щоб змінити її, обери «Змінити адресу» в меню ☰.", None)
 
     def ask_lead(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))

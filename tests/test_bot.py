@@ -182,14 +182,14 @@ class AddressAndSettingsTests(BotTests.__base__):
     def subscribe_sadova(self):
         return self.say("/start", "btn:r:16", "Сусли", "btn:s:179889")
 
-    def test_start_when_subscribed_offers_change_or_keep(self):
+    def test_start_when_subscribed_just_shows_the_address_without_asking(self):
         self.subscribe_sadova()
         _, text, buttons = self.say("/start")
-        self.assertIn("Твоя адреса: с. Сусли, вул. Садова (черга 2.2)", text)
-        self.assertIn("лише за однією адресою", text)
-        self.assertEqual(buttons, [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
-        self.assertIn("залишаю", self.say("btn:a:keep")[1])
+        self.assertIn("Я вже стежу за твоєю адресою: с. Сусли, вул. Садова (черга 2.2)", text)
+        self.assertIn("«Змінити адресу» в меню", text)
+        self.assertIsNone(buttons, "no Змінити/Залишити question - the user decides via the menu")
         self.assertEqual(self.state.subs["7"].queue, 2)
+        self.assertIn("залишаю", self.say("btn:a:keep")[1], "old buttons from earlier messages still answer politely")
 
     def test_change_address_replaces_old_one_and_keeps_lead(self):
         self.subscribe_sadova()

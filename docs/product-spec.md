@@ -82,7 +82,8 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - Replies arrive on the next tick (≤ ~10 min). *Given* a lookup error, *then* I'm asked to retry later.
 
 **US-8 One address per person, and changing it** (Must, v0.3)
-- *Given* I'm subscribed and send /start, *then* the bot shows my address and offers "Змінити адресу" / "Залишити".
+- *Given* I'm subscribed and send /start, *then* the bot only shows my address and points to «Змінити адресу» in the menu.
+  It does **not** ask a question: changing the address is always the user's own choice (changed after live testing, 2026-10-13).
 - *Given* I send /change (or tap "Змінити адресу") and finish the quiz, *then* the new address **replaces** the old one
   ("✅ Адресу змінено"), my warning time is kept, and alerts restart for the new queue.
 - A chat never has more than one address.
