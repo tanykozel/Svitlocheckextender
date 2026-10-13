@@ -118,6 +118,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - **Health:** bot status (running / late / failed), number of runs and failed runs, failures by type, each with a plain "what to do" hint, links to the logs of failed runs, minutes between runs against the 10-minute target (R4), and requests by type.
 - **Context:** schedule days *published* and *changed* per day and per week across all 12 queues, the hour of day when changes happen, and changes by queue.
 - **Warning before a change:** for each change, how long before the first edited half-hour it came (after the fact / < 1 h / 1–3 h / 3–6 h / 6–12 h / > 12 h), the median, the share of last-minute changes, and how much outage changes added or removed. Also how long before midnight the next day's schedule appears. *Why:* it shows how much notice people really get from ZTOE, which is the core reason Люся exists.
+- **Releases & deploys:** each run records its code version (commit) and branch. The dashboard shows the live version (release tag name when there is one), whether the first run after a deploy was OK, failures since the deploy, deploys per week, **change failure rate** (deploys followed within 1 hour by a crash or failed run; ZTOE/Telegram outages excluded) and **time to restore** (first bad run → next good run), and draws a line on the charts where a new version went live. Only runs from `main` count as production.
 - **Privacy:** only aggregate numbers are published (the `metrics` branch of a public repo). Chat ids, names and addresses never appear; a test checks this.
 - A failed or crashed run is still recorded, so it shows up on the dashboard. Every chart has a table view and supports dark mode.
 
@@ -152,7 +153,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 84.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 85.
 
 ## 6. Success metrics
 - ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.

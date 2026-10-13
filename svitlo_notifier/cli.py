@@ -288,7 +288,8 @@ def cmd_metrics_merge(args: argparse.Namespace) -> int:
     folder = Path(args.into)
     folder.mkdir(parents=True, exist_ok=True)
     entry = merge_from_files(folder, Path(args.record),
-                             {"run_id": args.run_id, "event": args.event, "outcome": args.outcome, "url": args.url})
+                             {"run_id": args.run_id, "event": args.event, "outcome": args.outcome, "url": args.url,
+                              "sha": args.sha[:7], "ref": args.ref})
     print(f"dashboard: run {entry.get('run_id', '?')} {entry.get('outcome')}, "
           f"subscribers {entry.get('subscribers', '?')}, failures {sum(entry.get('failures', {}).values())}")
     return 0
@@ -319,6 +320,8 @@ def build_parser() -> argparse.ArgumentParser:
     dash.add_argument("--event", default=os.environ.get("GITHUB_EVENT_NAME", ""))
     dash.add_argument("--outcome", default="success", help="success / failure / cancelled")
     dash.add_argument("--url", default="")
+    dash.add_argument("--sha", default=os.environ.get("GITHUB_SHA", ""), help="the code version (commit) that ran")
+    dash.add_argument("--ref", default=os.environ.get("GITHUB_REF_NAME", ""), help="the branch it ran from")
     dash.set_defaults(func=cmd_metrics_merge)
 
     tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
