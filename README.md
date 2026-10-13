@@ -31,7 +31,7 @@ If something isn't found, Люся asks you to check the spelling and waits for 
 | Обрати адресу | `/start` | start the address quiz. If you're already subscribed, Люся only reminds you of your address. |
 | Графік на сьогодні й завтра | `/schedule` | outage windows, their length, total hours without power, and the official link |
 | Стан за графіком | `/status` | what the **schedule** says now and the next changes (not the real power state) |
-| Коли попереджати | `/settings` | warn 15, **30** (default) or 60 minutes before each change |
+| Коли попереджати | `/setting` | warn 15, **30** (default) or 60 minutes before each change |
 | Змінити адресу | `/change` | choose another address. It **replaces** the current one: one address per person. |
 | Відписатися | `/stop` | stop all alerts |
 | Про Люсю і допомога | `/help` | short help |
@@ -111,11 +111,13 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 - **Owner tool:** `/test` (hidden from the menu and help) sends one example of each alert for your address, marked 🧪 ТЕСТ.
 
 ### Owner dashboard
-**https://tanykozel.github.io/Svitlocheckextender/dashboard/** has three sections:
+**https://tanykozel.github.io/Svitlocheckextender/dashboard/** has four sections:
 1. **Subscribers:** active count, 7-day change, joined/left, a trend line, and splits by queue and warning time.
 2. **How the system works:** bot status, runs and failed runs (with log links), failures by type with a
    "what to do" hint, minutes between runs (GitHub scheduler gaps), and requests by type.
-3. **Context:** how often ZTOE publishes or changes a day's schedule (per day/week, by hour, by queue), and
+3. **Releases & deploys:** the live version, whether its first run was OK, failures since the deploy, deploys
+   per week, **change failure rate** and **time to restore** (DORA metrics), plus version lines on the charts.
+4. **Context:** how often ZTOE publishes or changes a day's schedule (per day/week, by hour, by queue), and
    **how much warning** each change gives (time from the edit to the first changed half-hour; share of last-minute changes). Люся
    checks all 12 queues every ~30 minutes for this.
 
@@ -164,7 +166,7 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 84 tests
+python -m unittest discover -s tests -v      # 86 tests
 ```
 
 ### How changes are made

@@ -130,17 +130,31 @@ class MergeTests(unittest.TestCase):
             record = {"ts": "2026-10-13T19:00:00+03:00", "subscribers": 2, "requests": {"/start": 2, "superseded": 4},
                       "outcomes": {"alert_sent": 1}, "failures": {"ztoe": 1},
                       "schedule_events": [{"queue": "1.2", "day": "2026-10-14", "kind": "published"}]}
-            merge_run(folder, record, {"run_id": "1", "event": "schedule", "outcome": "success"})
+            merge_run(folder, record, {"run_id": "1", "event": "schedule", "outcome": "success",
+                                       "sha": "4be2657", "ref": "main"})
             crashed = merge_run(folder, None, {"run_id": "2", "event": "schedule", "outcome": "failure"})
             self.assertEqual(crashed["failures"], {"run_crashed": 1})
             history = json.loads((folder / "history.json").read_text())
             self.assertEqual([h["run_id"] for h in history], ["1", "2"])
             self.assertNotIn("schedule_events", history[0])
+            self.assertEqual((history[0]["sha"], history[0]["ref"]), ("4be2657", "main"), "which version ran, for deploys")
             self.assertEqual(len(json.loads((folder / "events.json").read_text())), 1)
             day = json.loads((folder / "daily.json").read_text())["2026-10-13"]
             self.assertEqual((day["requests"], day["alerts"], day["subscribers_max"]), (2, 1, 2))
             self.assertEqual(day["failures"]["ztoe"], 1)
             self.assertEqual(day["failed_runs"], 1)
+
+    def test_workflow_command_records_the_version_from_github(self):
+        import io, os
+        from contextlib import redirect_stdout
+        from unittest import mock
+        from svitlo_notifier import cli
+        with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()), \
+             mock.patch.dict(os.environ, {"GITHUB_SHA": "4be2657a8f7d4bb0", "GITHUB_REF_NAME": "main",
+                                          "GITHUB_RUN_ID": "9", "GITHUB_EVENT_NAME": "schedule"}):
+            self.assertEqual(cli.main(["metrics-merge", "--record", str(Path(tmp) / "none.json"), "--into", tmp]), 0)
+            entry = json.loads((Path(tmp) / "history.json").read_text())[0]
+        self.assertEqual((entry["sha"], entry["ref"], entry["run_id"]), ("4be2657", "main", "9"))
 
 
 if __name__ == "__main__":
