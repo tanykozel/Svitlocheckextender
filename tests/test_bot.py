@@ -519,3 +519,31 @@ class RetireOldQuestionTests(unittest.TestCase):
         bot.handle_text(7, "/start")
         self.assertEqual(removed, [(7, 555)], "the old Змінити/Залишити buttons are taken off")
         self.assertNotIn("7", state.keyboards)
+
+
+class SubscribedUserRepliesTests(unittest.TestCase):
+    """Agreed in live testing: /start -> address reminder; anything unexpected -> «Я тебе не розумію»."""
+
+    def setUp(self):
+        self.sent = []
+        self.state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Центральна")})
+        self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append(text), self.state)
+
+    def test_start_shows_address_reminder(self):
+        self.bot.handle_text(7, "/start")
+        self.assertEqual(self.sent, ["Я вже стежу за твоєю адресою: с. Сусли, вул. Центральна (черга 1.2) 💡\n"
+                                     "Щоб змінити її, обери «Змінити адресу» в меню ☰."])
+
+    def test_unexpected_text_says_not_understood_not_the_address(self):
+        for text in ("Fjdkdk", "привіт", "start", "коли світло?", "/abc"):
+            self.sent.clear()
+            self.bot.handle_text(7, text)
+            self.assertEqual(len(self.sent), 1, text)
+            self.assertIn("Я тебе не розумію", self.sent[0], text)
+            self.assertNotIn("Я вже стежу", self.sent[0], text)
+
+    def test_text_sent_together_with_start_gets_its_own_reply(self):
+        self.bot.process_updates([{"update_id": 1, "message": {"chat": {"id": 7}, "text": "/start"}},
+                                  {"update_id": 2, "message": {"chat": {"id": 7}, "text": "Fjdkdk"}}])
+        self.assertIn("Я вже стежу", self.sent[0])
+        self.assertIn("Я тебе не розумію", self.sent[1])
