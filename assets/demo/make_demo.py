@@ -27,7 +27,7 @@ W, H = 720, 1280
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 EMOJI = "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf"
-AVATAR = Path(__file__).resolve().parents[1] / "bot-avatar.png"
+AVATAR = Path(__file__).resolve().parents[1] / "lyusya-avatar.png"
 
 BG, HEADER = (196, 220, 178), (255, 255, 255)
 BOT_BUBBLE, USER_BUBBLE = (255, 255, 255), (225, 255, 199)
@@ -190,7 +190,7 @@ def render(chat: list[Msg], caption: str = "", typing: bool = False) -> Image.Im
     mask = Image.new("L", (60, 60), 0)
     ImageDraw.Draw(mask).ellipse((0, 0, 60, 60), fill=255)
     img.paste(avatar, (20, 15), mask)
-    d.text((95, 16), "svitlo_dim_tk_bot", font=f_head, fill=INK)
+    d.text((95, 16), "Лампочка Люся 💡".replace(" 💡", ""), font=f_head, fill=INK)
     d.text((95, 52), "бот", font=f_small, fill=MUTED)
 
     # Input bar with the Menu button.
@@ -317,8 +317,8 @@ def main(out: str) -> None:
                 break
         show(1.0, caption)
 
-    frames.append((card("Світло Дім", [
-        "💡 Telegram-бот, що попереджає про відключення світла за графіком Житомиробленерго.",
+    frames.append((card("Лампочка Люся", [
+        "💡 Привіт! Я попереджаю про відключення світла за графіком Житомиробленерго.",
         "Демо: реальні адреси, графік - для прикладу.",
     ]), 4.0))
 
@@ -344,14 +344,14 @@ def main(out: str) -> None:
     off = next(e for e in events if e.kind == EventKind.OFF)
     on = next(e for e in events if e.kind == EventKind.ON and e.at >= off.until)
     next_off = next(e for e in events if e.kind != EventKind.ON and e.at > on.at)
-    frames.append((card("…за 30 хв до вимкнення", ["Бот сам надсилає попередження - нічого не треба відкривати."]),
+    frames.append((card("…за 30 хв до вимкнення", ["Люся сама надсилає попередження - нічого не треба відкривати."]),
                    2.2))
     chat.append(Msg("bot", describe_event(off, off.at - timedelta(minutes=30), sub.label), time="13:30"))
     show(4.0, "🔴 Попередження: скільки триватиме")
     chat.append(Msg("bot", describe_event(on, on.at - timedelta(minutes=30), sub.label, next_off), time="17:30"))
     show(4.0, "🟢 Світло повертається + наступне вимкнення")
 
-    frames.append((card("Що вміє бот", [
+    frames.append((card("Що вміє Люся", [
         "🔴 Попереджає за 15 / 30 / 60 хв до вимкнення і ввімкнення",
         "⏱ Каже, скільки триватиме відключення",
         "📅 Графік на сьогодні й завтра + посилання на ZTOE",

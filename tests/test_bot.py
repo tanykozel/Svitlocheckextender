@@ -96,7 +96,7 @@ class BotTests(unittest.TestCase):
 
     def test_big_town_asks_to_type_street(self):
         self.bot.process_updates(self.updates("/start", "btn:r:16", "btn:c:16823"))
-        self.assertIn("напишіть назву вулиці", self.last()[1])
+        self.assertIn("напиши назву вулиці", self.last()[1])
         self.bot.process_updates(self.updates("Центральна"))
         self.assertIn("4/4", self.last()[1])
 
@@ -108,7 +108,7 @@ class BotTests(unittest.TestCase):
         self.bot.process_updates(self.updates("btn:c:17028"))
         self.assertIn("3/4. с. Хутір-Мокляки", self.last()[1], "name remembered for the tapped option")
         self.bot.process_updates(self.updates("/start", "btn:r:16", "Атлантида"))
-        self.assertIn("Не знайшов", self.last()[1])
+        self.assertIn("Не знайшла", self.last()[1])
 
     def test_exact_name_beats_partial(self):
         found = match(FakeDirectory().cities("16"), "Мокляки")
@@ -116,7 +116,7 @@ class BotTests(unittest.TestCase):
 
     def test_unknown_house_and_stop(self):
         self.bot.process_updates(self.updates("/start", "btn:r:16", "Сусли", "btn:s:179892", "99"))
-        self.assertIn("не знайдено", self.last()[1])
+        self.assertIn("Не знайшла будинок", self.last()[1])
         self.bot.process_updates(self.updates("10"))
         self.assertIn("42", self.state.subs)
         self.bot.process_updates(self.updates("/stop"))
@@ -127,7 +127,7 @@ class BotTests(unittest.TestCase):
             raise ApiError("down")
         self.dir.cities = broken
         self.bot.process_updates(self.updates("/start", "btn:r:16"))
-        self.assertIn("Сталася помилка", self.last()[1])
+        self.assertIn("щось пішло не так", self.last()[1])
         self.assertIsNotNone(self.state.offset)
 
     def test_alerts_fetch_each_queue_once_and_drop_blocked_chats(self):
@@ -185,10 +185,10 @@ class AddressAndSettingsTests(BotTests.__base__):
     def test_start_when_subscribed_offers_change_or_keep(self):
         self.subscribe_sadova()
         _, text, buttons = self.say("/start")
-        self.assertIn("Ваша адреса: с. Сусли, вул. Садова (черга 2.2)", text)
-        self.assertIn("лише на одну адресу", text)
+        self.assertIn("Твоя адреса: с. Сусли, вул. Садова (черга 2.2)", text)
+        self.assertIn("лише за однією адресою", text)
         self.assertEqual(buttons, [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
-        self.assertIn("залишено", self.say("btn:a:keep")[1])
+        self.assertIn("залишаю", self.say("btn:a:keep")[1])
         self.assertEqual(self.state.subs["7"].queue, 2)
 
     def test_change_address_replaces_old_one_and_keeps_lead(self):
@@ -215,7 +215,7 @@ class AddressAndSettingsTests(BotTests.__base__):
         bot = Bot(self.dir, lambda chat, text, _b: sent.append(text), self.state)
         bot.send_alerts(datetime(2026, 10, 13, 7, 10, tzinfo=KYIV))  # 50 min before the 08:00 outage
         self.assertEqual(len(sent), 1)
-        self.assertIn("через ~50 хв", sent[0])
+        self.assertIn("За ~50 хв", sent[0])
 
     def test_unknown_lead_value_is_ignored(self):
         self.subscribe_sadova()
@@ -223,7 +223,7 @@ class AddressAndSettingsTests(BotTests.__base__):
         self.assertEqual(self.state.subs["7"].lead_minutes, 30)
 
     def test_schedule_command(self):
-        self.assertIn("Спершу оберіть адресу", self.say("/schedule")[1])
+        self.assertIn("Спершу обери адресу", self.say("/schedule")[1])
         self.subscribe_sadova()
         _, text, _ = self.say("/schedule")
         self.assertIn("черга 2.2", text)
@@ -291,7 +291,7 @@ class QueueChangeTests(unittest.TestCase):
                                {"id": "2", "name": "3", "cherga": 6, "pidcherga": 1}]
         self.bot.refresh_queues(self.t0 + timedelta(hours=7))
         texts = dict(self.sent)
-        self.assertIn("Не можу знайти вашу адресу", texts[1])
+        self.assertIn("Не можу знайти твою адресу", texts[1])
         self.assertIn("кілька різних черг", texts[2])
         self.assertEqual((house_sub.queue, street_sub.queue), (3, 2), "keep alerting on the last known queue")
         self.bot.refresh_queues(self.t0 + timedelta(hours=14))
@@ -408,16 +408,16 @@ class DemoTests(unittest.TestCase):
         self.assertIn("за 60 хв", intro)
         self.assertEqual(len(samples), 4)
         self.assertTrue(all(t.startswith("🧪 ТЕСТ") for t in samples))
-        self.assertIn("🔴 Світло вимкнуть через ~60 хв", samples[0])
+        self.assertIn("🔴 За ~60 хв", samples[0])
         self.assertIn("Без світла ~", samples[0])
-        self.assertIn("🟢 Світло мають увімкнути через ~60 хв", samples[1])
+        self.assertIn("🟢 Я повертаюся! За ~60 хв", samples[1])
         self.assertIn("📅 Графік на", samples[2])
         self.assertIn("було 3.1, тепер X.Y", samples[3])
         self.assertEqual(self.state.subs["1"].alerts.sent, {}, "a test never marks real alerts as sent")
 
     def test_test_command_needs_an_address(self):
         self.bot.handle_text(1, "/test")
-        self.assertIn("Спершу оберіть адресу", self.sent[-1])
+        self.assertIn("Спершу обери адресу", self.sent[-1])
 
 
 class MenuTests(unittest.TestCase):

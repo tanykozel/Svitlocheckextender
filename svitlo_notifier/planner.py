@@ -74,30 +74,32 @@ def describe_event(event: Event, now: datetime, label: str, next_off: Event | No
     prefix = f"[{label}] " if label else ""
     length = duration(event.until - event.at)
     if event.kind == EventKind.OFF:
-        return (f"{prefix}🔴 Світло вимкнуть через ~{minutes} хв, о {_clock(event.at, now)}.\n"
-                f"Без світла ~{length}, до {_clock(event.until, now)} за графіком.\n"
+        return (f"{prefix}🔴 За ~{minutes} хв, о {_clock(event.at, now)}, мене вимкнуть 😔\n"
+                f"Без світла ~{length}, до {_clock(event.until, now)} (за графіком).\n"
+                "Заряди телефон і павербанк 🔋\n"
                 f"Повний графік: /schedule або {SCHEDULE_URL}")
     if event.kind == EventKind.POSSIBLE_OFF:
-        return (f"{prefix}🟡 Можливе відключення через ~{minutes} хв, о {_clock(event.at, now)}, "
-                f"до {_clock(event.until, now)} (~{length}).")
-    text = f"{prefix}🟢 Світло мають увімкнути через ~{minutes} хв, о {_clock(event.at, now)}."
+        return (f"{prefix}🟡 Можливо, за ~{minutes} хв, о {_clock(event.at, now)}, мене вимкнуть - "
+                f"до {_clock(event.until, now)} (~{length}).\nКраще підготуйся заздалегідь 🔋")
+    text = f"{prefix}🟢 Я повертаюся! За ~{minutes} хв, о {_clock(event.at, now)}, світло мають увімкнути 💡"
     if next_off is not None:
-        text += f"\nНаступне вимкнення: {_clock(next_off.at, now)} (світло буде ~{duration(next_off.at - event.at)})."
+        text += (f"\nНаступного разу мене вимкнуть о {_clock(next_off.at, now)} - "
+                 f"світло буде ~{duration(next_off.at - event.at)}.")
     else:
-        text += "\nНаступних вимкнень за графіком поки немає."
+        text += "\nНаступних вимкнень за графіком поки немає 🎉"
     return text
 
 
 def describe_day(day: date, intervals: list[Interval], label: str, changed: bool) -> str:
     prefix = f"[{label}] " if label else ""
-    head = "змінено" if changed else "опубліковано"
-    return f"{prefix}📅 Графік на {day:%d.%m} {head}:\n{day_lines(intervals)}\nПовний графік: {SCHEDULE_URL}"
+    head = f"Графік на {day:%d.%m} змінився:" if changed else f"З'явився графік на {day:%d.%m}:"
+    return f"{prefix}📅 {head}\n{day_lines(intervals)}\nПовний графік: {SCHEDULE_URL}"
 
 
 def day_lines(intervals: list[Interval]) -> str:
     outages = [i for i in intervals if i.status.value in ("outage", "probable")]
     if not outages:
-        return "відключень не заплановано."
+        return "відключень не заплановано 🎉"
     lines = [
         f"• {_span(i)} ({duration(i.end - i.start)}){' - можливе' if i.status.value == 'probable' else ''}"
         for i in outages
@@ -112,7 +114,7 @@ def schedule_text(raw: list[dict], now: datetime, label: str = "") -> str:
     days = {d: i for d, i in by_day(raw).items() if d >= now.date()}
     head = f"📅 {label}\n" if label else "📅 "
     if not days:
-        return f"{head}Графіка на сьогодні ще немає.\nПовний графік: {SCHEDULE_URL}"
+        return f"{head}Графіка на сьогодні ще немає - щойно з'явиться, повідомлю.\nПовний графік: {SCHEDULE_URL}"
     names = {now.date(): "Сьогодні", now.date() + timedelta(days=1): "Завтра"}
     parts = [f"{names.get(d, f'{d:%d.%m}')} ({d:%d.%m}):\n{day_lines(i)}" for d, i in days.items()]
     return head + "\n\n".join(parts) + f"\n\nПовний графік: {SCHEDULE_URL}"
@@ -166,18 +168,24 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
     return messages, new_state
 
 
+_STATUS_UA = {"available": "світло є 💡", "outage": "світла немає 🔴", "probable": "можливе відключення 🟡",
+              "unknown": "невідомо"}
+_EVENT_UA = {"off": "вимкнення 🔴", "on": "увімкнення 🟢", "possible_off": "можливе вимкнення 🟡"}
+
+
 def summary(raw: list[dict], now: datetime, label: str = "") -> str:
     """Human-readable 'now and next' view for the status command."""
     timeline = merge([i for intervals in by_day(raw).values() for i in intervals])
     current = status_at(timeline, now)
-    lines = [f"{label}:" if label else "Статус:"]
+    lines = [f"{label}" if label else "Стан:"]
     if current is None:
-        lines.append("  зараз: немає даних у графіку")
+        lines.append("Зараз: у графіку немає даних")
     else:
-        lines.append(f"  зараз: {current.status.value} ({_span(current)})")
+        lines.append(f"Зараз: {_STATUS_UA[current.status.value]} ({_span(current)})")
     upcoming = [e for e in transitions(timeline) if e.at > now][:6]
-    for event in upcoming:
-        lines.append(f"  {event.at:%d.%m %H:%M} → {event.kind.value}")
-    if not upcoming:
-        lines.append("  змін далі за графіком немає")
+    if upcoming:
+        lines.append("Далі за графіком:")
+        lines += [f"• {_clock(e.at, now)} - {_EVENT_UA[e.kind.value]}" for e in upcoming]
+    else:
+        lines.append("Змін за графіком далі немає.")
     return "\n".join(lines)

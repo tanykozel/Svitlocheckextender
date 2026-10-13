@@ -53,7 +53,7 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
    python -m svitlo_notifier telegram-setup          # sends "✅ Svitlo notifier підключено"
    ```
 
-6. Optional polish in BotFather: `/setuserpic` for an avatar (ready-made: [assets/bot-avatar.png](assets/bot-avatar.png)), and `/setdescription` for the text people see before pressing Start.
+6. Optional polish in BotFather: `/setuserpic` for an avatar (ready-made: [assets/lyusya-avatar.png](assets/lyusya-avatar.png), the persona «Лампочка Люся»; or the plain [assets/bot-avatar.png](assets/bot-avatar.png)), and `/setdescription` for the text people see before pressing Start.
 
 For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 (Settings → Secrets and variables → Actions).

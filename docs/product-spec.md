@@ -122,6 +122,19 @@ so that the chat isn't flooded with duplicate replies.
 - *Given* the bot sends new buttons, *then* the buttons on its previous message are removed, so old choices can't be tapped.
 - Every tapped button stops loading, even when its request was ignored.
 
+## 4a. Voice & tone: persona «Лампочка Люся 💡» (decided 2026-10-13)
+
+| Rule | Example |
+|---|---|
+| Люся speaks in the first person, as the light itself (feminine forms) | «мене вимкнуть», «знайшла», «я повертаюся» |
+| Informal «ти», but never assumes the user's gender | «Адресу ще не обрано» rather than «ти не обрав/обрала» |
+| Facts first (time, duration), warmth after | «За ~30 хв, о 14:00, мене вимкнуть 😔 Без світла ~4 год…» |
+| Caring, never sarcastic: outages are stressful | «Заряди телефон і павербанк 🔋» |
+| Honest about limits | No promises about emergency outages; the source (Житомиробленерго) is always named |
+| 1–2 emoji per message, meaningful ones | 🔴 off, 🟢 on, 🟡 possible, 📅 schedule, ⚠️ change |
+
+Display name: «Лампочка Люся 💡 | Світло Житомирщина». Avatar: `assets/lyusya-avatar.png`.
+
 ## 5. Non-functional requirements
 
 **Check and notification cadence (decided):**

@@ -59,7 +59,7 @@ class PlannerTests(unittest.TestCase):
     def test_alerts_inside_lead_window_only_once(self):
         messages, state = plan(TODAY, at(7, 40), State(), self.settings)
         self.assertEqual(len(messages), 1)
-        self.assertIn("вимкнуть через ~20 хв, о 08:00", messages[0])
+        self.assertIn("За ~20 хв, о 08:00, мене вимкнуть", messages[0])
         self.assertIn("до 12:00", messages[0])
 
         again, _ = plan(TODAY, at(7, 50), state, self.settings)
@@ -72,7 +72,7 @@ class PlannerTests(unittest.TestCase):
     def test_power_back_alert(self):
         messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
         self.assertEqual(len(messages), 1)
-        self.assertIn("увімкнути через ~15 хв, о 12:00", messages[0])
+        self.assertIn("За ~15 хв, о 12:00, світло мають увімкнути", messages[0])
 
     def test_possible_outage_can_be_muted(self):
         self.assertEqual(len(plan(TODAY, at(17, 45), State(), self.settings)[0]), 1)
@@ -86,13 +86,13 @@ class PlannerTests(unittest.TestCase):
 
         published, state = plan(TODAY + TOMORROW, at(14), state, settings)
         self.assertEqual(len(published), 1)
-        self.assertIn("Графік на 14.10 опубліковано", published[0])
+        self.assertIn("З'явився графік на 14.10", published[0])
         self.assertIn("00:00–02:00", published[0])
 
         changed_tomorrow = day_slots("14.10.2026", block(0, 4))
         changed, state = plan(TODAY + changed_tomorrow, at(15), state, settings)
         self.assertEqual(len(changed), 1)
-        self.assertIn("змінено", changed[0])
+        self.assertIn("змінився", changed[0])
         self.assertIn("00:00–04:00", changed[0])
 
         unchanged, _ = plan(TODAY + changed_tomorrow, at(16), state, settings)
@@ -112,7 +112,7 @@ class PlannerTests(unittest.TestCase):
 
     def test_on_alert_mentions_next_outage(self):
         messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
-        self.assertIn("Наступне вимкнення: 18:00 (світло буде ~6 год)", messages[0])
+        self.assertIn("Наступного разу мене вимкнуть о 18:00 - світло буде ~6 год", messages[0])
         last_on, _ = plan(TODAY, at(19, 45), State(), self.settings)
         self.assertIn("Наступних вимкнень за графіком поки немає", last_on[0])
 
@@ -130,8 +130,8 @@ class PlannerTests(unittest.TestCase):
         messages, _ = plan(TODAY, at(7, 40), State(), settings)
         self.assertTrue(messages[0].startswith("[Дім] "))
         text = summary(TODAY, at(9), "Дім")
-        self.assertIn("зараз: outage (08:00–12:00)", text)
-        self.assertIn("13.10 12:00 → on", text)
+        self.assertIn("Зараз: світла немає 🔴 (08:00–12:00)", text)
+        self.assertIn("• 12:00 - увімкнення 🟢", text)
 
 
 if __name__ == "__main__":
