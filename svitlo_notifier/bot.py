@@ -19,7 +19,7 @@ from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, descr
 from .schedule import KYIV, Event, EventKind, merge, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 2
+MENU_VERSION = 3  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
@@ -28,7 +28,6 @@ MENU = [
     ("status", "Стан зараз і найближчі зміни"),
     ("settings", "За скільки хвилин попереджати"),
     ("change", "Змінити адресу"),
-    ("test", "Приклад сповіщень (тест)"),
     ("stop", "Відписатися"),
     ("help", "Довідка"),
 ]
@@ -202,7 +201,6 @@ HELP = (
     "/schedule - графік на сьогодні й завтра\n"
     "/status - стан зараз і найближчі зміни\n"
     "/settings - за скільки хвилин попереджати\n"
-    "/test - приклад сповіщень\n"
     "/stop - відписатися\n\n"
     f"Графік перевіряю кожні {CHECK_EVERY_MIN} хв, тому відповідаю не миттєво, а протягом ~{CHECK_EVERY_MIN} хв.\n"
     f"Повний графік: {SCHEDULE_URL}"

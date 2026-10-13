@@ -71,7 +71,7 @@ or short text: **district → town/village → street → house**. The bot then 
 | `/schedule` | today's and tomorrow's outage windows, their length, and total hours without power, plus a link to the official schedule |
 | `/status` | current state and the next changes for my address |
 | `/settings` | how many minutes before a change to warn: 15, 30 (default) or 60 |
-| `/test` | sends one example of every alert type for my address, marked "🧪 ТЕСТ" |
+| `/test` | *(hidden: not in the menu or /help, but works when typed)* sends one example of every alert type for my address, marked "🧪 ТЕСТ" |
 | `/stop` | unsubscribe |
 | `/help` | short help |
 

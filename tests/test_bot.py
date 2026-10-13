@@ -418,3 +418,14 @@ class DemoTests(unittest.TestCase):
     def test_test_command_needs_an_address(self):
         self.bot.handle_text(1, "/test")
         self.assertIn("Спершу оберіть адресу", self.sent[-1])
+
+
+class MenuTests(unittest.TestCase):
+    def test_test_command_is_hidden_from_menu_and_help_but_still_works(self):
+        from svitlo_notifier.bot import HELP, MENU
+        self.assertNotIn("test", [command for command, _ in MENU])
+        self.assertNotIn("/test", HELP)
+        sent = []
+        state = BotState(subs={"1": Subscription(3, 1, "A")})
+        Bot(FakeDirectory(), lambda chat, text, buttons: sent.append(text), state).handle_text(1, "/test")
+        self.assertTrue(any(t.startswith("🧪 ТЕСТ") for t in sent))
