@@ -76,7 +76,7 @@ class BotCommandTests(unittest.TestCase):
             for _ in range(2):
                 with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
                      mock.patch.object(cli, "set_commands", side_effect=lambda *a: calls.append(a)), \
-                     mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
+                     mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lyusia_zt_bot"}), \
                      mock.patch.object(cli, "get_updates", return_value=[]), \
                      redirect_stdout(io.StringIO()):
                     self.assertEqual(cli.main(["bot", "--state", str(state)]), 0)
@@ -95,13 +95,13 @@ class BotCommandTests(unittest.TestCase):
              mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
              mock.patch.object(cli, "set_commands"), \
              mock.patch.object(cli, "send_message", return_value=None), \
-             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lyusia_zt_bot"}), \
              mock.patch.object(cli, "get_updates", return_value=[update]), \
              redirect_stdout(io.StringIO()):
             metrics = Path(tmp) / "m" / "run.json"
             self.assertEqual(cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--metrics", str(metrics)]), 0)
             record = json.loads(metrics.read_text())
-        self.assertEqual(record["bot"], "svitlo_lusia_zt_bot")
+        self.assertEqual(record["bot"], "svitlo_lyusia_zt_bot")
         self.assertEqual(record["requests"], {"/help": 1})
         self.assertEqual(record["processed"], 1)
 
@@ -126,7 +126,7 @@ class StayAwakeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
              mock.patch.object(cli, "set_commands"), \
-             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lyusia_zt_bot"}), \
              mock.patch.object(cli, "get_updates", side_effect=fake_updates), \
              mock.patch.object(cli.Bot, "send_alerts", side_effect=lambda *a, **k: alert_checks.append(1) or 0), \
              mock.patch.object(cli.time, "monotonic", side_effect=lambda: clock["t"]), \
@@ -139,7 +139,7 @@ class StayAwakeTests(unittest.TestCase):
 
 
 class BotSwitchTests(unittest.TestCase):
-    """Switching to a new bot token (@svitlo_dim_tk_bot -> @svitlo_lusia_zt_bot)."""
+    """Switching to a new bot token (@svitlo_dim_tk_bot -> @Svitlo_Lyusia_zt_bot)."""
 
     def run_bot(self, state_path, bot_id, username, offsets_seen):
         def updates(_token, offset=None, wait=0):
@@ -166,8 +166,8 @@ class BotSwitchTests(unittest.TestCase):
                            sessions={"42": {"step": "city"}}, keyboards={"42": 5})
             save_json(path, old.to_dict())
             offsets = []
-            out = self.run_bot(path, 222, "svitlo_lusia_zt_bot", offsets)
-            self.assertIn("bot: @svitlo_lusia_zt_bot", out)
+            out = self.run_bot(path, 222, "svitlo_lyusia_zt_bot", offsets)
+            self.assertIn("bot: @svitlo_lyusia_zt_bot", out)
             self.assertIn("New bot detected", out)
             self.assertEqual(offsets[0], None, "old bot's counter is not used with the new bot")
             saved = BotState.from_dict(load_json(path))
@@ -177,7 +177,7 @@ class BotSwitchTests(unittest.TestCase):
             self.assertEqual(saved.keyboards, {})
 
             offsets.clear()
-            out = self.run_bot(path, 222, "svitlo_lusia_zt_bot", offsets)
+            out = self.run_bot(path, 222, "svitlo_lyusia_zt_bot", offsets)
             self.assertNotIn("New bot detected", out, "same bot next time: nothing reset")
 
     def test_rejected_token_stops_without_touching_state(self):

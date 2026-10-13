@@ -69,7 +69,7 @@ class DashboardCounterTests(unittest.TestCase):
     def test_record_has_no_chat_ids_or_addresses(self):
         self.state.subs = {"123456789": Subscription(1, 2, "с. Сусли, вул. Гранітна 12", lead_minutes=60)}
         self.state.sessions = {"987654321": {"step": "city"}}
-        record = metrics_record(self.bot, {"username": "svitlo_lusia_zt_bot"}, 3, 1.5)
+        record = metrics_record(self.bot, {"username": "svitlo_lyusia_zt_bot"}, 3, 1.5)
         self.assertEqual((record["subscribers"], record["quizzes"]), (1, 1))
         self.assertEqual(record["by_queue"], {"1.2": 1})
         self.assertEqual(record["by_lead"], {"60": 1})
