@@ -324,3 +324,71 @@ class QueueChangeTests(unittest.TestCase):
         self.assertEqual((sub.street_id, sub.house, sub.queue), ("179892", "12а", 3))
         restored = BotState.from_dict(self.state.to_dict()).subs["5"]
         self.assertEqual((restored.street_id, restored.house), ("179892", "12а"))
+
+
+class LatestRequestWinsTests(unittest.TestCase):
+    """US-12: repeated taps between runs -> only the most recent request is answered."""
+
+    def setUp(self):
+        self.sent = []
+        self.removed = []
+        self.state = BotState()
+        self.ids = iter(range(1000, 2000))
+
+        def send(chat, text, buttons):
+            self.sent.append((chat, text, buttons))
+            return next(self.ids)
+
+        self.bot = Bot(FakeDirectory(), send, self.state, unbutton=lambda c, m: self.removed.append((c, m)))
+        self.n = 0
+
+    def batch(self, *items, chat=42):
+        out = []
+        for item in items:
+            self.n += 1
+            if item.startswith("btn:"):
+                out.append({"update_id": self.n, "callback_query": {
+                    "id": str(self.n), "data": item[4:], "message": {"chat": {"id": chat}}}})
+            else:
+                out.append({"update_id": self.n, "message": {"chat": {"id": chat}, "text": item}})
+        return out
+
+    def test_three_starts_and_a_tap_give_one_answer_per_step(self):
+        answered = []
+        self.bot.process_updates(self.batch("/start", "/start", "/start", "btn:r:16"), answer=answered.append)
+        texts = [t for _, t, _ in self.sent]
+        self.assertEqual(sum("1/4" in t for t in texts), 1, "one district list, not three")
+        self.assertIn("2/4", texts[-1])
+        self.assertEqual(answered, ["4"], "the tap's spinner is stopped")
+        self.assertEqual(self.state.offset, 5)
+
+    def test_two_district_taps_follow_the_last_one(self):
+        self.bot.process_updates(self.batch("/start"))
+        self.bot.process_updates(self.batch("btn:r:7", "btn:r:16"))
+        self.assertEqual(sum("2/4" in t for _, t, _ in self.sent), 1)
+        self.assertEqual(self.state.sessions["42"]["rem"], "16")
+
+    def test_start_over_drops_everything_before_it(self):
+        self.bot.process_updates(self.batch("/start", "btn:r:16", "сусли", "/start"))
+        texts = [t for _, t, _ in self.sent]
+        self.assertEqual(len(texts), 2, "greeting + one district list only")
+        self.assertIn("1/4", texts[-1])
+        self.assertEqual(self.state.sessions["42"], {"step": "rem"})
+
+    def test_typed_answers_are_not_merged(self):
+        self.bot.process_updates(self.batch("/start", "btn:r:16", "атлантида", "сусли"))
+        self.assertIn("3/4. с. Сусли", self.sent[-1][1])
+
+    def test_other_chats_are_not_affected(self):
+        updates = self.batch("/start", chat=1) + self.batch("/start", chat=2)
+        self.bot.process_updates(updates)
+        self.assertEqual({c for c, t, _ in self.sent if "1/4" in t}, {1, 2})
+
+    def test_old_buttons_are_removed_when_new_ones_arrive(self):
+        self.bot.process_updates(self.batch("/start"))
+        first_keyboard = self.state.keyboards["42"]
+        self.bot.process_updates(self.batch("btn:r:16"))
+        self.assertEqual(self.removed, [(42, first_keyboard)])
+        self.assertNotEqual(self.state.keyboards["42"], first_keyboard)
+        restored = BotState.from_dict(self.state.to_dict())
+        self.assertEqual(restored.keyboards, self.state.keyboards)

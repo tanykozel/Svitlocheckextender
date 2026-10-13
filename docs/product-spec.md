@@ -112,6 +112,16 @@ alerts stay correct without me re-subscribing.
 - *Given* ZTOE is unavailable, *then* nothing changes and the check is retried on the next tick.
 - Out of scope: the owner's address set through repository variables is not re-checked (use the quiz instead).
 
+**US-12 Most recent request wins** (Must, v0.3; found in live testing 2026-10-13)
+As a user who taps again because the bot hasn't answered yet, I want only my latest request handled,
+so that the chat isn't flooded with duplicate replies.
+- *Given* several requests from me arrived between two runs, *then* everything before my last "start over"
+  (/start, /change, /stop, "Змінити адресу") is ignored.
+- *Given* back-to-back requests of the same kind (two /start, two district taps), *then* only the last one is answered.
+- Typed answers are not merged (a wrong spelling followed by a correction still works).
+- *Given* the bot sends new buttons, *then* the buttons on its previous message are removed, so old choices can't be tapped.
+- Every tapped button stops loading, even when its request was ignored.
+
 ## 5. Non-functional requirements
 
 **Check and notification cadence (decided):**
