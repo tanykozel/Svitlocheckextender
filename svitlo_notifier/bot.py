@@ -173,19 +173,35 @@ class Subscription:
 @dataclass
 class BotState:
     offset: int | None = None
+    bot_id: int | None = None  # which Telegram bot this state belongs to (offsets are per bot)
     menu_version: int = 0  # bumped when MENU changes, so Telegram is updated once
     subs: dict[str, Subscription] = field(default_factory=dict)  # chat id -> subscription
     sessions: dict[str, dict] = field(default_factory=dict)  # chat id -> quiz progress
     keyboards: dict[str, int] = field(default_factory=dict)  # chat id -> message with the live buttons
 
+    def switch_bot(self, bot_id: int) -> bool:
+        """Adopt a new bot token. Returns True if the bot changed.
+
+        Message counters, live buttons, half-finished quizzes and the menu belong to the old bot and
+        are reset; subscriptions are kept (a private chat id is the user's id, the same for any bot),
+        so people keep their address once they press Start in the new bot.
+        """
+        if self.bot_id == bot_id:
+            return False
+        changed = self.bot_id is not None
+        self.bot_id = bot_id
+        if changed:
+            self.offset, self.keyboards, self.sessions, self.menu_version = None, {}, {}, 0
+        return changed
+
     def to_dict(self) -> dict:
-        return {"offset": self.offset, "menu_version": self.menu_version,
+        return {"offset": self.offset, "bot_id": self.bot_id, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions, "keyboards": self.keyboards}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
-        return cls(raw.get("offset"), int(raw.get("menu_version", 0)),
+        return cls(raw.get("offset"), raw.get("bot_id"), int(raw.get("menu_version", 0)),
                    {k: Subscription.from_dict(v) for k, v in raw.get("subs", {}).items()},
                    dict(raw.get("sessions", {})),
                    {k: int(v) for k, v in raw.get("keyboards", {}).items()})

@@ -171,6 +171,7 @@ Display name: «Світло Житомир 💡 Графік відключен
 | R5 | Emergency outages are not in the schedule | Limitation | Out of scope. A future option is a "power sensor" approach like SvitloBot. |
 | A1 | Slot colours: red = outage, yellow = possible, white/green = power | Assumption | Verify against the live API (R2). |
 | Q1 | Is bezsvitla.com.ua a better or extra source? | Open | Third-party aggregator; could not be reviewed from the build environment. Keep ZTOE as the primary source. |
+| D1 | Final bot: @svitlo_lusia_zt_bot (decided 2026-10-13). Switching tokens keeps subscriptions | Decision | Bot change is detected automatically (message counter + menu reset). |
 | Q2 | Several addresses per person (home + parents)? | Open | v0.3 candidate. |
 | R6 | Private repo: ~4,300 Actions min/month vs 2,000 free | Risk | Make the repo public (code has no secrets), or move the bot to an always-on free host. |
 | R8 | Public repo: logs are public and fork PRs could read the cache | Mitigated | State encrypted with SVITLO_STATE_KEY; chat ids never logged; fork PR workflows need owner approval. |
