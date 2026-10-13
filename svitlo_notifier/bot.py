@@ -222,7 +222,7 @@ class BotState:
 NOT_UNDERSTOOD = "Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help."
 
 HELP = (
-    "Привіт, я Лампочка Люся 💡\n"
+    "Привіт, я Світло Люся 💡\n"
     "Попереджаю про відключення світла за графіком Житомиробленерго: заздалегідь до вимкнення "
     "і до ввімкнення, кажу, скільки мене не буде, і повідомляю, коли графік змінюється.\n\n"
     "/start - обрати адресу (одна на людину)\n"
@@ -326,7 +326,7 @@ class Bot:
     def start(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Привіт! Я Лампочка Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
+            self.send(chat_id, "Привіт! Я Світло Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
             self.ask_rem(chat_id)
             return
         # No question here: changing the address is the user's own choice via the menu (/change).

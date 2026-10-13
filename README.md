@@ -1,4 +1,4 @@
-# «Лампочка Люся 💡»: outage alerts for Zhytomyr oblast
+# «Світло Люся 💡»: outage alerts for Zhytomyr oblast
 
 **Telegram bot: [@svitlo_lusia_zt_bot](https://t.me/svitlo_lusia_zt_bot)** · display name «Світло Житомир 💡 Графік відключень»
 
