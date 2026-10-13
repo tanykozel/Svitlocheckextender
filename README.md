@@ -101,6 +101,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 | **Find my queue** | District → city → street → house lookup, or the live schedule for a queue (fill *queue* / *subqueue*). |
 | **Telegram setup** | Checks the token; sends each chat its id in Telegram, or a test message if `TELEGRAM_CHAT_ID` is set. |
 | **Tests** | Runs the automated tests on every push. |
+| **Release** | Publishes a GitHub Release (version tag + notes) for the code live on `main`. |
 
 - **Cadence:** schedule check every 10 min; address → queue re-check every 6 h. GitHub's scheduler is "best effort"
   and in practice sometimes skips runs for 30+ minutes. See risk R4 in the spec and the v0.4 Cloudflare plan.
@@ -175,6 +176,7 @@ python -m unittest discover -s tests -v      # 86 tests
 - **One branch per change** (`feature/...`, `fix/...`), then a **pull request** into `main`. The Tests workflow
   (check `unit`) must pass, and the owner reviews and merges. Link the user story in the PR (e.g. "US-16").
 - **Releases** are tags on `main` using [Semantic Versioning](https://semver.org): `v0.3.1` = fix or small addition,
-  `v0.4.0` = new capability. Create a GitHub Release from the tag with "Generate release notes". The product view of
+  `v0.4.0` = new capability. Publish one with **Actions → Release → Run workflow** (version, title, "what's new";
+  the list of merged PRs is added automatically), or by hand under Releases → Draft a new release. The product view of
   the history is in the spec, section 9.
 - The `metrics` branch is **data only**: the bot rewrites it after every run. Never edit it or open a PR from it.
