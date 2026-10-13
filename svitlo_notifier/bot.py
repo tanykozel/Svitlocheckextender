@@ -18,8 +18,18 @@ from .planner import SCHEDULE_URL, Settings, State, plan, schedule_text, summary
 from .schedule import KYIV
 
 MAX_BUTTONS = 30
+MENU_VERSION = 1
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
+MENU = [
+    ("start", "Обрати адресу"),
+    ("schedule", "Графік на сьогодні й завтра"),
+    ("status", "Стан зараз і найближчі зміни"),
+    ("settings", "За скільки хвилин попереджати"),
+    ("change", "Змінити адресу"),
+    ("stop", "Відписатися"),
+    ("help", "Довідка"),
+]
 DEFAULT_LEAD = 30
 Buttons = list[list[tuple[str, str]]]
 
@@ -120,17 +130,18 @@ class Subscription:
 @dataclass
 class BotState:
     offset: int | None = None
+    menu_version: int = 0  # bumped when MENU changes, so Telegram is updated once
     subs: dict[str, Subscription] = field(default_factory=dict)  # chat id -> subscription
     sessions: dict[str, dict] = field(default_factory=dict)  # chat id -> quiz progress
 
     def to_dict(self) -> dict:
-        return {"offset": self.offset,
+        return {"offset": self.offset, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
-        return cls(raw.get("offset"),
+        return cls(raw.get("offset"), int(raw.get("menu_version", 0)),
                    {k: Subscription.from_dict(v) for k, v in raw.get("subs", {}).items()},
                    dict(raw.get("sessions", {})))
 

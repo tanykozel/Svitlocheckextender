@@ -13,8 +13,9 @@ from .api import ApiError, GpvClient
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
-from .bot import Bot, BotState, Subscription
-from .telegram import TelegramError, answer_callback, get_me, get_updates, recent_chats, send_message
+from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
+from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, send_message,
+                       set_commands)
 
 
 def _env_int(name: str) -> int | None:
@@ -170,6 +171,13 @@ def cmd_bot(args: argparse.Namespace) -> int:
     if owner and queue is not None and subqueue is not None and owner not in state.subs:
         state.subs[owner] = Subscription(queue, subqueue, os.environ.get("SVITLO_LABEL", ""),
                                          lead_minutes=_env_int("SVITLO_LEAD_MINUTES") or 30)
+
+    if state.menu_version < MENU_VERSION:
+        try:
+            set_commands(token, MENU)
+            state.menu_version = MENU_VERSION
+        except TelegramError as exc:
+            print(f"warning: could not set the bot menu: {exc}")
 
     bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state)
     try:
