@@ -1,8 +1,11 @@
 name: Outage alerts
 
+# Every tick: answer bot messages (the address quiz), then send due alerts to all subscribers.
+# Switched off until the repository variable BOT_ENABLED is set to "true"
+# (Settings -> Secrets and variables -> Actions -> Variables).
 on:
   schedule:
-    - cron: "*/10 * * * *" # GitHub may delay scheduled runs; see README "Where to run it"
+    - cron: "*/10 * * * *" # GitHub may start scheduled runs a few minutes late
   workflow_dispatch:
 
 concurrency:
@@ -10,9 +13,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check:
-    # Stays idle until the queue is configured (Settings -> Secrets and variables -> Actions -> Variables).
-    if: vars.SVITLO_QUEUE != '' && vars.SVITLO_SUBQUEUE != ''
+  tick:
+    if: vars.BOT_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -20,23 +22,35 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Restore sent-alerts state
+      - name: Restore bot state
         uses: actions/cache/restore@v4
         with:
           path: .state
           key: svitlo-state-${{ github.run_id }}
           restore-keys: svitlo-state-
-      - name: Send due alerts
+      - name: Answer messages and send alerts
         env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           SVITLO_QUEUE: ${{ vars.SVITLO_QUEUE }}
           SVITLO_SUBQUEUE: ${{ vars.SVITLO_SUBQUEUE }}
           SVITLO_LABEL: ${{ vars.SVITLO_LABEL }}
           SVITLO_LEAD_MINUTES: ${{ vars.SVITLO_LEAD_MINUTES }}
-        run: python -m svitlo_notifier check
-      - name: Save sent-alerts state
+        run: python -m svitlo_notifier bot
+      - name: Phone push via ntfy (optional)
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SVITLO_QUEUE: ${{ vars.SVITLO_QUEUE }}
+          SVITLO_SUBQUEUE: ${{ vars.SVITLO_SUBQUEUE }}
+          SVITLO_LABEL: ${{ vars.SVITLO_LABEL }}
+          SVITLO_LEAD_MINUTES: ${{ vars.SVITLO_LEAD_MINUTES }}
+        run: |
+          if [ -n "$NTFY_TOPIC" ] && [ -n "$SVITLO_QUEUE" ]; then
+            python -m svitlo_notifier check
+          else
+            echo "ntfy not configured; skipping"
+          fi
+      - name: Save bot state
         if: always()
         uses: actions/cache/save@v4
         with:

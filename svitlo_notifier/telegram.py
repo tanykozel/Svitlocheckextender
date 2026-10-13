@@ -36,13 +36,38 @@ def _call(token: str, method: str, payload: dict | None = None, timeout: float =
     return result["result"]
 
 
-def send_message(token: str, chat_id: str, text: str, timeout: float = 20.0) -> None:
-    _call(
-        token,
-        "sendMessage",
-        {"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
-        timeout,
-    )
+def send_message(
+    token: str,
+    chat_id: str | int,
+    text: str,
+    timeout: float = 20.0,
+    buttons: list[list[tuple[str, str]]] | None = None,
+) -> None:
+    """Send text; `buttons` are rows of (label, callback_data) shown under the message."""
+    payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if buttons:
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": label, "callback_data": data} for label, data in row] for row in buttons
+            ]
+        }
+    _call(token, "sendMessage", payload, timeout)
+
+
+def get_updates(token: str, offset: int | None = None) -> list[dict]:
+    """Pending messages and button taps. Telegram keeps them for 24 hours until confirmed by `offset`."""
+    payload: dict = {"timeout": 0, "allowed_updates": ["message", "callback_query"]}
+    if offset is not None:
+        payload["offset"] = offset
+    return _call(token, "getUpdates", payload)
+
+
+def answer_callback(token: str, callback_id: str) -> None:
+    """Stop the button's loading spinner. Taps older than a few minutes can't be answered; that's fine."""
+    try:
+        _call(token, "answerCallbackQuery", {"callback_query_id": callback_id})
+    except TelegramError:
+        pass
 
 
 def get_me(token: str) -> dict:
