@@ -110,29 +110,38 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _annotate(level: str, text: str) -> None:
+    """Print, and on GitHub Actions also show the line on the run's Summary page."""
+    print(text)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::{level}::{text}")
+
+
 def cmd_telegram_setup(args: argparse.Namespace) -> int:
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token:
-        sys.exit("error: set TELEGRAM_BOT_TOKEN to the token @BotFather gave you")
+        _annotate("error", "TELEGRAM_BOT_TOKEN is not set: add the token from @BotFather as a secret")
+        return 1
     bot = get_me(token)
-    print(f"bot: @{bot.get('username')} ({bot.get('first_name')}) - token works")
+    username = bot.get("username")
+    print(f"bot: @{username} ({bot.get('first_name')}) - token works")
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if chat_id:
         send_message(token, chat_id, "✅ Svitlo notifier підключено. Сюди приходитимуть сповіщення про світло.")
-        print(f"test message sent to chat {chat_id}")
+        _annotate("notice", f"Test message sent to chat {chat_id}. Telegram is ready.")
         return 0
 
     chats = recent_chats(token)
     if not chats:
-        print(f"no chats yet: open https://t.me/{bot.get('username')}, press Start (or send any message), "
-              "then run this again")
-        return 1
-    print("chats that messaged the bot (use the id as TELEGRAM_CHAT_ID):")
+        # Not a failure: the user just has to write to the bot first.
+        _annotate("warning", f"Token works, but nobody has written to the bot yet. Open https://t.me/{username}, "
+                             "press Start (or send any message), then run this again.")
+        return 0
     for chat in chats:
         name = chat.get("title") or " ".join(filter(None, (chat.get("first_name"), chat.get("last_name"))))
-        print(f"  {chat['id']}\t{chat.get('type')}\t{name}")
-    print("\nnext: set TELEGRAM_CHAT_ID and run telegram-setup again to send a test message")
+        _annotate("notice", f"Chat found: {name} ({chat.get('type')}) - TELEGRAM_CHAT_ID = {chat['id']}")
+    print("next: save that id as TELEGRAM_CHAT_ID and run telegram-setup again to send a test message")
     return 0
 
 
