@@ -48,28 +48,74 @@ def _span(interval: Interval) -> str:
     return f"{_hm(interval.start)}–{end}"
 
 
-def describe_event(event: Event, now: datetime, label: str) -> str:
+SCHEDULE_URL = "https://www.ztoe.com.ua/unhooking-search.php"
+
+
+def duration(delta: timedelta) -> str:
+    """timedelta -> '4 год', '2 год 30 хв', '45 хв'."""
+    minutes = round(delta.total_seconds() / 60)
+    hours, rest = divmod(minutes, 60)
+    if hours and rest:
+        return f"{hours} год {rest} хв"
+    return f"{hours} год" if hours else f"{rest} хв"
+
+
+def _clock(moment: datetime, now: datetime) -> str:
+    """'18:00', '24:00' for the coming midnight, or 'завтра 06:00'."""
+    if moment.hour == 0 and moment.minute == 0 and moment.date() == now.date() + timedelta(days=1):
+        return "24:00"
+    if moment.date() != now.date():
+        return f"завтра {_hm(moment)}" if moment.date() == now.date() + timedelta(days=1) else f"{moment:%d.%m %H:%M}"
+    return _hm(moment)
+
+
+def describe_event(event: Event, now: datetime, label: str, next_off: Event | None = None) -> str:
     minutes = max(1, round((event.at - now).total_seconds() / 60))
     prefix = f"[{label}] " if label else ""
-    until = "24:00" if event.until.hour == 0 and event.until.minute == 0 else _hm(event.until)
+    length = duration(event.until - event.at)
     if event.kind == EventKind.OFF:
-        return f"{prefix}🔴 Світло вимкнуть через ~{minutes} хв, о {_hm(event.at)} (до {until} за графіком)."
+        return (f"{prefix}🔴 Світло вимкнуть через ~{minutes} хв, о {_clock(event.at, now)}.\n"
+                f"Без світла ~{length}, до {_clock(event.until, now)} за графіком.\n"
+                f"Повний графік: /schedule або {SCHEDULE_URL}")
     if event.kind == EventKind.POSSIBLE_OFF:
-        return f"{prefix}🟡 Можливе відключення через ~{minutes} хв, о {_hm(event.at)} (до {until})."
-    return f"{prefix}🟢 Світло мають увімкнути через ~{minutes} хв, о {_hm(event.at)}."
+        return (f"{prefix}🟡 Можливе відключення через ~{minutes} хв, о {_clock(event.at, now)}, "
+                f"до {_clock(event.until, now)} (~{length}).")
+    text = f"{prefix}🟢 Світло мають увімкнути через ~{minutes} хв, о {_clock(event.at, now)}."
+    if next_off is not None:
+        text += f"\nНаступне вимкнення: {_clock(next_off.at, now)} (світло буде ~{duration(next_off.at - event.at)})."
+    else:
+        text += "\nНаступних вимкнень за графіком поки немає."
+    return text
 
 
 def describe_day(day: date, intervals: list[Interval], label: str, changed: bool) -> str:
     prefix = f"[{label}] " if label else ""
     head = "змінено" if changed else "опубліковано"
+    return f"{prefix}📅 Графік на {day:%d.%m} {head}:\n{day_lines(intervals)}\nПовний графік: {SCHEDULE_URL}"
+
+
+def day_lines(intervals: list[Interval]) -> str:
     outages = [i for i in intervals if i.status.value in ("outage", "probable")]
     if not outages:
-        body = "відключень не заплановано."
-    else:
-        body = "\n".join(
-            f"• {_span(i)}{' (можливе)' if i.status.value == 'probable' else ''}" for i in outages
-        )
-    return f"{prefix}📅 Графік на {day:%d.%m} {head}:\n{body}"
+        return "відключень не заплановано."
+    lines = [
+        f"• {_span(i)} ({duration(i.end - i.start)}){' - можливе' if i.status.value == 'probable' else ''}"
+        for i in outages
+    ]
+    off = sum((i.end - i.start for i in outages if i.status.value == "outage"), timedelta())
+    lines.append(f"Разом без світла: {duration(off)}")
+    return "\n".join(lines)
+
+
+def schedule_text(raw: list[dict], now: datetime, label: str = "") -> str:
+    """Today's and tomorrow's outage windows, for the /schedule command."""
+    days = {d: i for d, i in by_day(raw).items() if d >= now.date()}
+    head = f"📅 {label}\n" if label else "📅 "
+    if not days:
+        return f"{head}Графіка на сьогодні ще немає.\nПовний графік: {SCHEDULE_URL}"
+    names = {now.date(): "Сьогодні", now.date() + timedelta(days=1): "Завтра"}
+    parts = [f"{names.get(d, f'{d:%d.%m}')} ({d:%d.%m}):\n{day_lines(i)}" for d, i in days.items()]
+    return head + "\n\n".join(parts) + f"\n\nПовний графік: {SCHEDULE_URL}"
 
 
 def by_day(raw: list[dict]) -> dict[date, list[Interval]]:
@@ -98,14 +144,16 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
             new_state.days[day.isoformat()] = fp
 
     timeline = merge([i for intervals in days.values() for i in intervals])
-    for event in transitions(timeline):
+    events = transitions(timeline)
+    for index, event in enumerate(events):
         if event.kind == EventKind.POSSIBLE_OFF and not settings.notify_possible:
             continue
         if not (now < event.at <= now + settings.lead):
             continue
         if event.key in new_state.sent:
             continue
-        messages.append(describe_event(event, now, settings.label))
+        next_off = next((e for e in events[index + 1 :] if e.kind != EventKind.ON), None)
+        messages.append(describe_event(event, now, settings.label, next_off))
         new_state.sent[event.key] = event.at.isoformat()
 
     horizon = now - timedelta(days=2)

@@ -105,6 +105,26 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(state.sent, {})
         self.assertNotIn("2026-10-01", state.days)
 
+    def test_off_alert_says_how_long_and_links_full_schedule(self):
+        messages, _ = plan(TODAY, at(7, 40), State(), self.settings)
+        self.assertIn("Без світла ~4 год, до 12:00", messages[0])
+        self.assertIn("ztoe.com.ua/unhooking-search.php", messages[0])
+
+    def test_on_alert_mentions_next_outage(self):
+        messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
+        self.assertIn("Наступне вимкнення: 18:00 (світло буде ~6 год)", messages[0])
+        last_on, _ = plan(TODAY, at(19, 45), State(), self.settings)
+        self.assertIn("Наступних вимкнень за графіком поки немає", last_on[0])
+
+    def test_schedule_text_lists_durations_and_total(self):
+        from svitlo_notifier.planner import duration, schedule_text
+        text = schedule_text(TODAY + TOMORROW, at(9), "Дім")
+        self.assertIn("Сьогодні (13.10):\n• 08:00–12:00 (4 год)\n• 18:00–20:00 (2 год) - можливе", text)
+        self.assertIn("Разом без світла: 4 год", text)
+        self.assertIn("Завтра (14.10):\n• 00:00–02:00 (2 год)", text)
+        self.assertEqual(duration(timedelta(minutes=150)), "2 год 30 хв")
+        self.assertEqual(duration(timedelta(minutes=45)), "45 хв")
+
     def test_label_prefix_and_summary(self):
         settings = Settings(lead=timedelta(minutes=30), notify_changes=False, label="Дім")
         messages, _ = plan(TODAY, at(7, 40), State(), settings)

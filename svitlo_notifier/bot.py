@@ -14,10 +14,13 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
-from .planner import Settings, State, plan, summary
+from .planner import SCHEDULE_URL, Settings, State, plan, schedule_text, summary
 from .schedule import KYIV
 
 MAX_BUTTONS = 30
+CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
+LEAD_CHOICES = (15, 30, 60)
+DEFAULT_LEAD = 30
 Buttons = list[list[tuple[str, str]]]
 
 
@@ -74,19 +77,22 @@ def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
 
 @dataclass
 class Subscription:
+    """One address per chat. Choosing a new address replaces the old one."""
+
     queue: int
     subqueue: int
     label: str
     alerts: State = field(default_factory=State)
+    lead_minutes: int = DEFAULT_LEAD
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
-                "alerts": self.alerts.to_dict()}
+                "lead_minutes": self.lead_minutes, "alerts": self.alerts.to_dict()}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
         return cls(int(raw["queue"]), int(raw["subqueue"]), str(raw.get("label", "")),
-                   State.from_dict(raw.get("alerts", {})))
+                   State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)))
 
 
 @dataclass
@@ -110,10 +116,17 @@ class BotState:
 # --- conversation ---------------------------------------------------------------------
 
 HELP = (
-    "Я надсилаю сповіщення про відключення світла за графіком Житомиробленерго "
-    "(за 30 хв до вимкнення і до ввімкнення, а також коли графік змінюється).\n\n"
-    "/start - обрати адресу\n/status - стан зараз і найближчі зміни\n/stop - відписатися\n\n"
-    "Відповідаю не миттєво, а протягом 5-10 хвилин."
+    "Я надсилаю сповіщення про відключення світла за графіком Житомиробленерго: "
+    "заздалегідь до вимкнення і до ввімкнення (скільки триватиме відключення), "
+    "а також коли графік публікують чи змінюють.\n\n"
+    "/start - обрати адресу (одна адреса на користувача)\n"
+    "/change - змінити адресу\n"
+    "/schedule - графік на сьогодні й завтра\n"
+    "/status - стан зараз і найближчі зміни\n"
+    "/settings - за скільки хвилин попереджати\n"
+    "/stop - відписатися\n\n"
+    f"Графік перевіряю кожні {CHECK_EVERY_MIN} хв, тому відповідаю не миттєво, а протягом ~{CHECK_EVERY_MIN} хв.\n"
+    f"Повний графік: {SCHEDULE_URL}"
 )
 
 
@@ -131,8 +144,14 @@ class Bot:
     def handle_text(self, chat_id: int, text: str) -> None:
         chat = str(chat_id)
         command = text.strip().split()[0].lower().split("@")[0] if text.strip() else ""
-        if command in ("/start", "/subscribe", "/address"):
+        if command in ("/start", "/subscribe"):
+            self.start(chat_id)
+        elif command in ("/change", "/address"):
             self.ask_rem(chat_id)
+        elif command == "/settings":
+            self.ask_lead(chat_id)
+        elif command == "/schedule":
+            self.schedule(chat_id)
         elif command == "/stop":
             self.state.subs.pop(chat, None)
             self.state.sessions.pop(chat, None)
@@ -154,7 +173,13 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
-        if kind == "r":
+        if data == "a:change":
+            self.ask_rem(chat_id)
+        elif data == "a:keep":
+            self.send(chat_id, "Добре, адресу залишено без змін.", None)
+        elif kind == "l":
+            self.lead_chosen(chat_id, value)
+        elif kind == "r":
             self.rem_chosen(chat_id, value)
         elif kind == "c":
             self.city_chosen(chat_id, value)
@@ -162,6 +187,41 @@ class Bot:
             self.street_chosen(chat_id, value)
 
     # quiz steps ------------------------------------------------------------------------
+
+    def start(self, chat_id: int) -> None:
+        sub = self.state.subs.get(str(chat_id))
+        if sub is None:
+            self.send(chat_id, "Вітаю! Оберу вашу адресу за 4 кроки, і надсилатиму сповіщення про світло.", None)
+            self.ask_rem(chat_id)
+            return
+        self.send(chat_id, f"Ваша адреса: {sub.label} (черга {sub.queue}.{sub.subqueue}).\n"
+                           "Можна підписатися лише на одну адресу. Змінити її?",
+                  [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
+
+    def ask_lead(self, chat_id: int) -> None:
+        sub = self.state.subs.get(str(chat_id))
+        if sub is None:
+            self.send(chat_id, "Спершу оберіть адресу: /start", None)
+            return
+        buttons = [[(f"{'✓ ' if m == sub.lead_minutes else ''}за {m} хв", f"l:{m}") for m in LEAD_CHOICES]]
+        self.send(chat_id, f"За скільки хвилин попереджати про вимкнення та ввімкнення? Зараз: {sub.lead_minutes} хв.\n"
+                           f"(Графік перевіряю кожні {CHECK_EVERY_MIN} хв.)", buttons)
+
+    def lead_chosen(self, chat_id: int, value: str) -> None:
+        sub = self.state.subs.get(str(chat_id))
+        if sub is None or not value.isdigit() or int(value) not in LEAD_CHOICES:
+            return
+        sub.lead_minutes = int(value)
+        self.send(chat_id, f"✅ Попереджатиму за {value} хв.", None)
+
+    def schedule(self, chat_id: int) -> None:
+        sub = self.state.subs.get(str(chat_id))
+        if sub is None:
+            self.send(chat_id, f"Спершу оберіть адресу: /start\nПовний графік: {SCHEDULE_URL}", None)
+            return
+        raw = self.dir.schedule(sub.queue, sub.subqueue)
+        self.send(chat_id, schedule_text(raw, datetime.now(KYIV), f"{sub.label}, черга {sub.queue}.{sub.subqueue}"),
+                  None)
 
     def ask_rem(self, chat_id: int) -> None:
         self.state.sessions[str(chat_id)] = {"step": "rem"}
@@ -246,11 +306,17 @@ class Bot:
 
     def subscribe(self, chat_id: int, queue: int, subqueue: int, label: str) -> None:
         chat = str(chat_id)
-        self.state.subs[chat] = Subscription(queue, subqueue, label)
+        old = self.state.subs.get(chat)
+        lead = old.lead_minutes if old else DEFAULT_LEAD
+        # One address per chat: the new one replaces the old, with fresh alert history.
+        self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead)
         self.state.sessions.pop(chat, None)
-        self.send(chat_id, f"✅ Готово! {label}: черга {queue}.{subqueue}.\n"
-                           "Надсилатиму сповіщення за 30 хв до вимкнення і ввімкнення світла.\n"
-                           "/status - стан зараз, /stop - відписатися.", None)
+        head = "✅ Адресу змінено" if old else "✅ Готово"
+        self.send(chat_id, f"{head}! {label}: черга {queue}.{subqueue}.\n"
+                           f"Попереджатиму за {lead} хв до вимкнення і ввімкнення світла "
+                           "(і скажу, скільки триватиме відключення), а також коли графік зміниться.\n"
+                           "/schedule - графік, /settings - час попередження, /change - інша адреса, "
+                           "/stop - відписатися.", None)
 
     def status(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
@@ -283,8 +349,7 @@ class Bot:
                     self.send(chat_id, "Сталася помилка під час пошуку. Спробуйте /start ще раз трохи пізніше.",
                               None)
 
-    def send_alerts(self, now: datetime, lead: timedelta,
-                    is_gone: Callable[[Exception], bool] = lambda _e: False) -> int:
+    def send_alerts(self, now: datetime, is_gone: Callable[[Exception], bool] = lambda _e: False) -> int:
         """Send due alerts to every subscriber; one schedule request per distinct queue."""
         schedules: dict[tuple[int, int], list[dict]] = {}
         sent = 0
@@ -299,7 +364,7 @@ class Bot:
             raw = schedules[key]
             if raw is None:
                 continue
-            messages, new_alerts = plan(raw, now, sub.alerts, Settings(lead=lead, label=sub.label))
+            messages, new_alerts = plan(raw, now, sub.alerts, Settings(lead=timedelta(minutes=sub.lead_minutes), label=sub.label))
             try:
                 for text in messages:
                     self.send(int(chat), text, None)

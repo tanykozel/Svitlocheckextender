@@ -142,19 +142,92 @@ class BotTests(unittest.TestCase):
 
         bot = Bot(self.dir, send, self.state)
         now = datetime(2026, 10, 13, 7, 40, tzinfo=KYIV)
-        sent = bot.send_alerts(now, timedelta(minutes=30), is_gone=lambda e: "blocked" in str(e))
+        sent = bot.send_alerts(now, is_gone=lambda e: "blocked" in str(e))
         self.assertEqual(sent, 2)
         self.assertEqual(self.dir.schedule_calls, [(3, 1)])
         self.assertEqual([c for c, _ in sends], [1, 2])
         self.assertTrue(sends[0][1].startswith("[A] 🔴"))
         self.assertNotIn("3", self.state.subs)
-        self.assertEqual(bot.send_alerts(now, timedelta(minutes=30)), 0, "no duplicates on the next tick")
+        self.assertEqual(bot.send_alerts(now), 0, "no duplicates on the next tick")
 
     def test_state_round_trip(self):
         self.bot.process_updates(self.updates("/start", "btn:r:16", "Сусли", "btn:s:179889"))
         restored = BotState.from_dict(self.state.to_dict())
         self.assertEqual(restored.subs["42"].queue, 2)
         self.assertEqual(restored.offset, self.state.offset)
+
+
+class AddressAndSettingsTests(BotTests.__base__):
+    """US-8 one address / change it, US-9 warning time, US-10 schedule view."""
+
+    def setUp(self):
+        self.sent = []
+        self.state = BotState()
+        self.dir = FakeDirectory()
+        self.bot = Bot(self.dir, lambda chat, text, buttons: self.sent.append((chat, text, buttons)), self.state)
+        self.n = 0
+
+    def say(self, *items):
+        out = []
+        for item in items:
+            self.n += 1
+            if item.startswith("btn:"):
+                out.append({"update_id": self.n, "callback_query": {
+                    "id": str(self.n), "data": item[4:], "message": {"chat": {"id": 7}}}})
+            else:
+                out.append({"update_id": self.n, "message": {"chat": {"id": 7}, "text": item}})
+        self.bot.process_updates(out)
+        return self.sent[-1]
+
+    def subscribe_sadova(self):
+        return self.say("/start", "btn:r:16", "Сусли", "btn:s:179889")
+
+    def test_start_when_subscribed_offers_change_or_keep(self):
+        self.subscribe_sadova()
+        _, text, buttons = self.say("/start")
+        self.assertIn("Ваша адреса: с. Сусли, вул. Садова (черга 2.2)", text)
+        self.assertIn("лише на одну адресу", text)
+        self.assertEqual(buttons, [[("Змінити адресу", "a:change"), ("Залишити", "a:keep")]])
+        self.assertIn("залишено", self.say("btn:a:keep")[1])
+        self.assertEqual(self.state.subs["7"].queue, 2)
+
+    def test_change_address_replaces_old_one_and_keeps_lead(self):
+        self.subscribe_sadova()
+        self.say("/settings", "btn:l:60")
+        self.state.subs["7"].alerts.sent["off@x"] = "2026-10-13T08:00:00+03:00"
+        self.say("/change", "btn:r:16", "Сусли", "btn:s:179892")
+        _, text, _ = self.say("14")
+        self.assertIn("✅ Адресу змінено", text)
+        self.assertEqual(len(self.state.subs), 1)
+        sub = self.state.subs["7"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.lead_minutes), (5, 2, 60))
+        self.assertEqual(sub.alerts.sent, {}, "alert history restarts for the new queue")
+
+    def test_settings_lead_time_changes_when_alerts_fire(self):
+        self.subscribe_sadova()
+        _, text, buttons = self.say("/settings")
+        self.assertIn("Зараз: 30 хв", text)
+        self.assertEqual([b[1] for b in buttons[0]], ["l:15", "l:30", "l:60"])
+        self.assertTrue(buttons[0][1][0].startswith("✓"))
+        self.assertIn("за 60 хв", self.say("btn:l:60")[1])
+
+        sent = []
+        bot = Bot(self.dir, lambda chat, text, _b: sent.append(text), self.state)
+        bot.send_alerts(datetime(2026, 10, 13, 7, 10, tzinfo=KYIV))  # 50 min before the 08:00 outage
+        self.assertEqual(len(sent), 1)
+        self.assertIn("через ~50 хв", sent[0])
+
+    def test_unknown_lead_value_is_ignored(self):
+        self.subscribe_sadova()
+        self.say("btn:l:999")
+        self.assertEqual(self.state.subs["7"].lead_minutes, 30)
+
+    def test_schedule_command(self):
+        self.assertIn("Спершу оберіть адресу", self.say("/schedule")[1])
+        self.subscribe_sadova()
+        _, text, _ = self.say("/schedule")
+        self.assertIn("черга 2.2", text)
+        self.assertIn("https://www.ztoe.com.ua/unhooking-search.php", text)
 
 
 class HelperTests(unittest.TestCase):

@@ -66,10 +66,21 @@ or short text: **district → town/village → street → house**. The bot then 
 
 | Command | What it does |
 |---|---|
-| `/start` | start (or redo) the address quiz |
+| `/start` | choose an address (one per person); if already subscribed, offers "change" or "keep" |
+| `/change` | pick a different address (replaces the current one) |
+| `/schedule` | today's and tomorrow's outage windows, their length, and total hours without power, plus a link to the official schedule |
 | `/status` | current state and the next changes for my address |
+| `/settings` | how many minutes before a change to warn: 15, 30 (default) or 60 |
 | `/stop` | unsubscribe |
 | `/help` | short help |
+
+Alerts say how long an outage lasts ("Без світла ~4 год, до 12:00"). The "power back" alert names the next outage.
+Each alert links to the full schedule on [ztoe.com.ua](https://www.ztoe.com.ua/unhooking-search.php).
+
+**How often it checks:** the schedule is read every 10 minutes (one GitHub Actions run). An alert goes out on the
+first run inside the user's warning window, so a 30-minute setting arrives ~20–30 minutes ahead.
+With 15 minutes, a late GitHub run can occasionally make the alert arrive only a few minutes ahead.
+Schedule changes and newly published days are reported on the next run (≤ ~10 min).
 
 Notes:
 - **Replies arrive within ~10 minutes, not instantly.** The bot runs in short "ticks" on GitHub Actions

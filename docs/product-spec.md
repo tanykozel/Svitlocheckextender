@@ -81,7 +81,36 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - *Given* I send /stop or block the bot, *then* I stop receiving alerts.
 - Replies arrive on the next tick (≤ ~10 min). *Given* a lookup error, *then* I'm asked to retry later.
 
+**US-8 One address per person, and changing it** (Must, v0.3)
+- *Given* I'm subscribed and send /start, *then* the bot shows my address and offers "Змінити адресу" / "Залишити".
+- *Given* I send /change (or tap "Змінити адресу") and finish the quiz, *then* the new address **replaces** the old one
+  ("✅ Адресу змінено"), my warning time is kept, and alerts restart for the new queue.
+- A chat never has more than one address.
+
+**US-9 Warning time** (Should, v0.3)
+- *Given* I send /settings, *then* I can pick 15, 30 or 60 minutes (current one marked ✓). The default is 30.
+- *Given* 60 minutes, *then* the outage alert arrives ~50–60 minutes before the change.
+
+**US-10 How long and the full picture** (Must, v0.3)
+- *Given* an outage alert, *then* it states the length and end time ("Без світла ~4 год, до 12:00") and links to the
+  official schedule.
+- *Given* a power-back alert, *then* it names the next outage and how long power stays on, or says none is scheduled.
+- *Given* I send /schedule, *then* I see today's and tomorrow's windows with durations, the total hours without power,
+  and the official link.
+- Schedule published/changed alerts include durations and the total.
+
 ## 5. Non-functional requirements
+
+**Check and notification cadence (decided):**
+
+| Item | Value |
+|---|---|
+| Schedule check / bot tick | every 10 min (GitHub Actions cron; GitHub may start runs a few minutes late) |
+| Warning before off/on | user choice 15 / **30** / 60 min |
+| "Schedule published/changed" alert | on the next tick after ZTOE updates (≤ ~10 min) |
+| Bot reply to a message or tap | on the next tick (≤ ~10 min) |
+| Duplicates | at most one alert per change per user |
+
 
 - Timezone: all times are Europe/Kyiv, regardless of where the job runs.
 - Runs unattended every 5–10 min; one run takes < 5 s; standard library only.

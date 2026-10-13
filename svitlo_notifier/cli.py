@@ -168,7 +168,8 @@ def cmd_bot(args: argparse.Namespace) -> int:
     owner, queue, subqueue = (os.environ.get("TELEGRAM_CHAT_ID", ""), _env_int("SVITLO_QUEUE"),
                               _env_int("SVITLO_SUBQUEUE"))
     if owner and queue is not None and subqueue is not None and owner not in state.subs:
-        state.subs[owner] = Subscription(queue, subqueue, os.environ.get("SVITLO_LABEL", ""))
+        state.subs[owner] = Subscription(queue, subqueue, os.environ.get("SVITLO_LABEL", ""),
+                                         lead_minutes=_env_int("SVITLO_LEAD_MINUTES") or 30)
 
     bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state)
     try:
@@ -180,8 +181,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
     # Save before alerts so answered messages are never processed twice.
     _write_json(path, state.to_dict())
 
-    lead = timedelta(minutes=_env_int("SVITLO_LEAD_MINUTES") or 30)
-    sent = bot.send_alerts(datetime.now(KYIV), lead, is_gone=_telegram_gone)
+    sent = bot.send_alerts(datetime.now(KYIV), is_gone=_telegram_gone)
     _write_json(path, state.to_dict())
     print(f"subscribers: {len(state.subs)}, alerts sent: {sent}")
     return 0
