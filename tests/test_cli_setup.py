@@ -64,7 +64,8 @@ class BotCommandTests(unittest.TestCase):
                     self.assertEqual(cli.main(["bot", "--state", str(state)]), 0)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][1][0], ("start", "Обрати адресу"))
-            self.assertEqual(json.loads(state.read_text())["menu_version"], 1)
+            from svitlo_notifier.bot import MENU_VERSION
+            self.assertEqual(json.loads(state.read_text())["menu_version"], MENU_VERSION)
 
     def test_bot_without_token_is_idle_not_failing(self):
         with mock.patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
