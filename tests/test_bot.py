@@ -392,3 +392,29 @@ class LatestRequestWinsTests(unittest.TestCase):
         self.assertNotEqual(self.state.keyboards["42"], first_keyboard)
         restored = BotState.from_dict(self.state.to_dict())
         self.assertEqual(restored.keyboards, self.state.keyboards)
+
+
+class DemoTests(unittest.TestCase):
+    def setUp(self):
+        self.sent = []
+        self.state = BotState()
+        self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append(text), self.state)
+
+    def test_test_command_sends_every_alert_type_marked_as_test(self):
+        self.state.subs["1"] = Subscription(3, 1, "с. Сусли, вул. Садова", lead_minutes=60)
+        self.bot.handle_text(1, "/test")
+        intro, *samples = self.sent
+        self.assertIn("4 приклади", intro)
+        self.assertIn("за 60 хв", intro)
+        self.assertEqual(len(samples), 4)
+        self.assertTrue(all(t.startswith("🧪 ТЕСТ") for t in samples))
+        self.assertIn("🔴 Світло вимкнуть через ~60 хв", samples[0])
+        self.assertIn("Без світла ~", samples[0])
+        self.assertIn("🟢 Світло мають увімкнути через ~60 хв", samples[1])
+        self.assertIn("📅 Графік на", samples[2])
+        self.assertIn("було 3.1, тепер X.Y", samples[3])
+        self.assertEqual(self.state.subs["1"].alerts.sent, {}, "a test never marks real alerts as sent")
+
+    def test_test_command_needs_an_address(self):
+        self.bot.handle_text(1, "/test")
+        self.assertIn("Спершу оберіть адресу", self.sent[-1])

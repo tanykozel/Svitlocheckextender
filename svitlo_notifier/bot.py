@@ -14,11 +14,12 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
-from .planner import SCHEDULE_URL, Settings, State, plan, schedule_text, summary
-from .schedule import KYIV
+from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, plan, schedule_text,
+                      summary)
+from .schedule import KYIV, Event, EventKind, merge, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 1
+MENU_VERSION = 2
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
@@ -27,6 +28,7 @@ MENU = [
     ("status", "Стан зараз і найближчі зміни"),
     ("settings", "За скільки хвилин попереджати"),
     ("change", "Змінити адресу"),
+    ("test", "Приклад сповіщень (тест)"),
     ("stop", "Відписатися"),
     ("help", "Довідка"),
 ]
@@ -200,6 +202,7 @@ HELP = (
     "/schedule - графік на сьогодні й завтра\n"
     "/status - стан зараз і найближчі зміни\n"
     "/settings - за скільки хвилин попереджати\n"
+    "/test - приклад сповіщень\n"
     "/stop - відписатися\n\n"
     f"Графік перевіряю кожні {CHECK_EVERY_MIN} хв, тому відповідаю не миттєво, а протягом ~{CHECK_EVERY_MIN} хв.\n"
     f"Повний графік: {SCHEDULE_URL}"
@@ -239,6 +242,8 @@ class Bot:
             self.ask_lead(chat_id)
         elif command == "/schedule":
             self.schedule(chat_id)
+        elif command in ("/test", "/demo"):
+            self.demo(chat_id)
         elif command == "/stop":
             self.state.subs.pop(chat, None)
             self.state.sessions.pop(chat, None)
@@ -309,6 +314,39 @@ class Bot:
         raw = self.dir.schedule(sub.queue, sub.subqueue)
         self.send(chat_id, schedule_text(raw, datetime.now(KYIV), f"{sub.label}, черга {sub.queue}.{sub.subqueue}"),
                   None)
+
+    def demo(self, chat_id: int) -> None:
+        """Send one example of every alert type for the user's real address, clearly marked as a test."""
+        sub = self.state.subs.get(str(chat_id))
+        if sub is None:
+            self.send(chat_id, "Спершу оберіть адресу: /start - тоді покажу приклади сповіщень.", None)
+            return
+        now = datetime.now(KYIV)
+        raw = self.dir.schedule(sub.queue, sub.subqueue)
+        days = by_day(raw)
+        events = [e for e in transitions(merge([i for d in days.values() for i in d])) if e.at > now]
+        off = next((e for e in events if e.kind == EventKind.OFF), None)
+        if off is None:  # nothing scheduled: show a made-up 4-hour outage
+            start = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            off = Event(EventKind.OFF, start, start + timedelta(hours=4))
+        on = next((e for e in events if e.kind == EventKind.ON and e.at >= off.until), None) or \
+            Event(EventKind.ON, off.until, off.until + timedelta(hours=6))
+        next_off = next((e for e in events if e.kind != EventKind.ON and e.at > on.at), None)
+        lead = timedelta(minutes=sub.lead_minutes)
+        today = days.get(now.date(), [])
+
+        mark = "🧪 ТЕСТ - приклад, не справжнє сповіщення\n\n"
+        samples = [
+            describe_event(off, off.at - lead, sub.label),
+            describe_event(on, on.at - lead, sub.label, next_off),
+            describe_day(now.date(), today, sub.label, changed=True),
+            f"⚠️ Житомиробленерго змінило чергу для вашої адреси ({sub.label}): було {sub.queue}.{sub.subqueue}, "
+            f"тепер X.Y.\nСповіщення тепер приходять за новою чергою. Графік: /schedule",
+        ]
+        self.send(chat_id, f"Надсилаю {len(samples)} приклади сповіщень для вашої адреси "
+                           f"(попередження за {sub.lead_minutes} хв).", None)
+        for text in samples:
+            self.send(chat_id, mark + text, None)
 
     def ask_rem(self, chat_id: int) -> None:
         self.state.sessions[str(chat_id)] = {"step": "rem"}
