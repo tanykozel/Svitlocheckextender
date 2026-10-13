@@ -13,7 +13,7 @@ from .api import ApiError, GpvClient
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
-from .telegram import TelegramError, send_message
+from .telegram import TelegramError, get_me, recent_chats, send_message
 
 
 def _env_int(name: str) -> int | None:
@@ -110,6 +110,32 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_telegram_setup(args: argparse.Namespace) -> int:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        sys.exit("error: set TELEGRAM_BOT_TOKEN to the token @BotFather gave you")
+    bot = get_me(token)
+    print(f"bot: @{bot.get('username')} ({bot.get('first_name')}) - token works")
+
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if chat_id:
+        send_message(token, chat_id, "✅ Svitlo notifier підключено. Сюди приходитимуть сповіщення про світло.")
+        print(f"test message sent to chat {chat_id}")
+        return 0
+
+    chats = recent_chats(token)
+    if not chats:
+        print(f"no chats yet: open https://t.me/{bot.get('username')}, press Start (or send any message), "
+              "then run this again")
+        return 1
+    print("chats that messaged the bot (use the id as TELEGRAM_CHAT_ID):")
+    for chat in chats:
+        name = chat.get("title") or " ".join(filter(None, (chat.get("first_name"), chat.get("last_name"))))
+        print(f"  {chat['id']}\t{chat.get('type')}\t{name}")
+    print("\nnext: set TELEGRAM_CHAT_ID and run telegram-setup again to send a test message")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="svitlo_notifier", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -119,6 +145,9 @@ def build_parser() -> argparse.ArgumentParser:
     lookup.add_argument("--city")
     lookup.add_argument("--street")
     lookup.set_defaults(func=cmd_lookup)
+
+    tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
+    tg.set_defaults(func=cmd_telegram_setup)
 
     for name, func, help_text in (
         ("status", cmd_status, "print current state and next changes"),
