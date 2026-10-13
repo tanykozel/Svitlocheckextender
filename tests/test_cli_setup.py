@@ -45,3 +45,27 @@ class TelegramSetupTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BotCommandTests(unittest.TestCase):
+    def test_menu_is_set_once_and_state_saved(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        calls = []
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp) / "bot.json"
+            for _ in range(2):
+                with mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
+                     mock.patch.object(cli, "set_commands", side_effect=lambda *a: calls.append(a)), \
+                     mock.patch.object(cli, "get_updates", return_value=[]), \
+                     redirect_stdout(io.StringIO()):
+                    self.assertEqual(cli.main(["bot", "--state", str(state)]), 0)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][1][0], ("start", "Обрати адресу"))
+            self.assertEqual(json.loads(state.read_text())["menu_version"], 1)
+
+    def test_bot_without_token_is_idle_not_failing(self):
+        with mock.patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(["bot"]), 0)

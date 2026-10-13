@@ -84,3 +84,8 @@ def recent_chats(token: str) -> list[dict]:
                 chats.pop(chat["id"], None)
                 chats[chat["id"]] = chat
     return list(chats.values())
+
+
+def set_commands(token: str, commands: list[tuple[str, str]]) -> None:
+    """Fill the bot's "Menu" button next to the message box (https://core.telegram.org/bots/api#setmycommands)."""
+    _call(token, "setMyCommands", {"commands": [{"command": c, "description": d} for c, d in commands]})
