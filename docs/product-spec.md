@@ -160,5 +160,6 @@ so that the chat isn't flooded with duplicate replies.
 | Q1 | Is bezsvitla.com.ua a better or extra source? | Open | Third-party aggregator; could not be reviewed from the build environment. Keep ZTOE as the primary source. |
 | Q2 | Several addresses per person (home + parents)? | Open | v0.3 candidate. |
 | R6 | Private repo: ~4,300 Actions min/month vs 2,000 free | Risk | Make the repo public (code has no secrets), or move the bot to an always-on free host. |
+| R8 | Public repo: logs are public and fork PRs could read the cache | Mitigated | State encrypted with SVITLO_STATE_KEY; chat ids never logged; fork PR workflows need owner approval. |
 | R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Risk | Acceptable for a few friends. Move to a durable store if usage grows. |
 | R5b | Live API verified from GitHub runners on 2026-10-13 (districts, villages, streets) | Resolved | R2/R3 closed. |

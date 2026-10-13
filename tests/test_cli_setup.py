@@ -25,11 +25,16 @@ class TelegramSetupTests(unittest.TestCase):
         self.assertIn("::warning::Token works", out)
         self.assertIn("https://t.me/svitlo_bot", out)
 
-    def test_found_chat_id_shown_on_summary(self):
+    def test_found_chat_id_goes_to_telegram_not_to_public_logs(self):
+        sent = []
         code, out = run({"TELEGRAM_BOT_TOKEN": "T", "GITHUB_ACTIONS": "true"},
-                        chats=[{"id": 42, "type": "private", "first_name": "Tetiana"}])
+                        chats=[{"id": 670870052, "type": "private", "first_name": "Tetiana"}], sent=sent)
         self.assertEqual(code, 0)
-        self.assertIn("::notice::Chat found: Tetiana (private) - TELEGRAM_CHAT_ID = 42", out)
+        self.assertIn("::notice::Found 1 chat(s)", out)
+        self.assertNotIn("670870052", out)
+        self.assertNotIn("Tetiana", out)
+        self.assertEqual(sent[0][1], 670870052)
+        self.assertIn("TELEGRAM_CHAT_ID: 670870052", sent[0][2])
 
     def test_sends_test_message_when_chat_id_set(self):
         sent = []
@@ -37,6 +42,7 @@ class TelegramSetupTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sent[0][:2], ("T", "42"))
         self.assertNotIn("::", out, "annotations only on GitHub Actions")
+        self.assertNotIn("42", out.replace("chat#", ""), "chat id is not logged")
 
     def test_missing_token_fails(self):
         code, _ = run({})

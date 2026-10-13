@@ -14,6 +14,7 @@ from .api import ApiError, GpvClient
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
+from .secure import StateKeyError, chat_tag, load_json, save_json
 from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
 from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, remove_buttons,
                        send_message, set_commands)
@@ -24,14 +25,17 @@ def _env_int(name: str) -> int | None:
     return int(value) if value else None
 
 
+def _state_key() -> str:
+    return os.environ.get("SVITLO_STATE_KEY", "")
+
+
 def _load_state(path: Path) -> State:
     try:
-        return State.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except FileNotFoundError:
-        return State()
-    except (OSError, ValueError):
+        raw = load_json(path, _state_key())
+    except ValueError:
         print(f"warning: ignoring unreadable state file {path}", file=sys.stderr)
         return State()
+    return State.from_dict(raw) if raw else State()
 
 
 def _save_state(path: Path, state: State) -> None:
@@ -124,12 +128,12 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
         return 1
     bot = get_me(token)
     username = bot.get("username")
-    print(f"bot: @{username} ({bot.get('first_name')}) - token works")
+    print(f"bot: @{username} - token works")
 
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
     if chat_id:
         send_message(token, chat_id, "✅ Svitlo notifier підключено. Сюди приходитимуть сповіщення про світло.")
-        _annotate("notice", f"Test message sent to chat {chat_id}. Telegram is ready.")
+        _annotate("notice", f"Test message sent to {chat_tag(chat_id)}. Telegram is ready.")
         return 0
 
     chats = recent_chats(token)
@@ -138,9 +142,11 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
         _annotate("warning", f"Token works, but nobody has written to the bot yet. Open https://t.me/{username}, "
                              "press Start (or send any message), then run this again.")
         return 0
+    # Run logs are public in a public repository, so the chat id is sent to the chat itself, not logged.
     for chat in chats:
-        name = chat.get("title") or " ".join(filter(None, (chat.get("first_name"), chat.get("last_name"))))
-        _annotate("notice", f"Chat found: {name} ({chat.get('type')}) - TELEGRAM_CHAT_ID = {chat['id']}")
+        send_message(token, chat["id"], f"Ваш TELEGRAM_CHAT_ID: {chat['id']}\n"
+                                        "Збережіть його як секрет у GitHub і запустіть Telegram setup ще раз.")
+    _annotate("notice", f"Found {len(chats)} chat(s); each received its TELEGRAM_CHAT_ID in Telegram.")
     print("next: save that id as TELEGRAM_CHAT_ID and run telegram-setup again to send a test message")
     return 0
 
@@ -159,12 +165,17 @@ def cmd_bot(args: argparse.Namespace) -> int:
         return 0
     path = Path(args.state)
     try:
-        state = BotState.from_dict(json.loads(path.read_text(encoding="utf-8")))
-    except FileNotFoundError:
-        state = BotState()
-    except (OSError, ValueError):
+        raw = load_json(path, _state_key())
+    except StateKeyError as exc:
+        # Refuse to start empty: saving would overwrite every subscription.
+        _annotate("error", str(exc))
+        return 1
+    except ValueError:
         print(f"warning: unreadable bot state {path}; starting empty", file=sys.stderr)
-        state = BotState()
+        raw = None
+    state = BotState.from_dict(raw) if raw else BotState()
+    if not _state_key() and os.environ.get("GITHUB_ACTIONS") == "true":
+        _annotate("warning", "SVITLO_STATE_KEY is not set: subscriber data is stored unencrypted in the Actions cache")
 
     # The owner's address from repository variables counts as a subscription too.
     owner, queue, subqueue = (os.environ.get("TELEGRAM_CHAT_ID", ""), _env_int("SVITLO_QUEUE"),
@@ -210,10 +221,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
 
 
 def _write_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    save_json(path, data, _state_key())
 
 
 def build_parser() -> argparse.ArgumentParser:

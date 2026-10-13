@@ -96,6 +96,11 @@ Notes:
   That is free in a **public** repository but above the 2,000 free minutes of a private one.
 - Optional polish: send `/setcommands` to @BotFather and paste the command list above, so friends see a menu.
 - Subscribers are stored in the Actions cache (`.state/bot.json`), not in the code.
+  **Encrypt them** (strongly recommended for a public repository): add a repository **secret** `SVITLO_STATE_KEY`
+  with a long random passphrase (30+ characters, e.g. from a password manager), and keep a copy somewhere safe.
+  From the next run, the state is stored only as `bot.json.enc` (Fernet: AES + HMAC). Without the key nobody,
+  not even you, can read it. If the key is lost, friends simply send `/start` again.
+  Chat ids are never printed in run logs, which are public in a public repository.
   If the bot is switched off for more than 7 days, GitHub deletes the cache and friends need to send `/start` again.
 
 ### Live testing with instant replies
