@@ -32,7 +32,9 @@ will be ready for each outage more often.
 alerts for off / possible off / on; "schedule published / changed" alerts; address-to-queue lookup;
 no ZTOE account.
 
-**Out of scope (not now):** a mobile app UI; multi-user sign-up; emergency (unscheduled) outage
+**In scope (v0.2):** friends subscribe themselves through an address quiz in the shared bot.
+
+**Out of scope (not now):** a mobile app UI; instant (sub-second) bot replies; emergency (unscheduled) outage
 detection; other oblenergos; payments or meter readings.
 
 ## 4. User stories and acceptance criteria
@@ -67,6 +69,18 @@ As a household member, I want a push N minutes before a scheduled outage so that
 - *Given* Telegram bot credentials are set, *then* alerts also arrive in Telegram.
 - *Given* neither is set, *then* the run stops with a clear configuration error.
 
+**US-7 Friend joins through an address quiz** (Should, v0.2)
+As a friend of the owner, I want to pick my address in the bot so that I get alerts without any setup.
+- *Given* I send /start, *then* I get district buttons (step 1/4).
+- *Given* I pick a district, *then* towns are offered as buttons and villages can be typed (2/4).
+- *Given* I type a name, *then* an exact match is chosen; several partial matches are offered as buttons;
+  none means "not found, try again".
+- *Given* a street with ≤ 30 options, *then* streets are buttons; otherwise I type it (3/4).
+- *Given* the whole street is in one queue, *then* the house question is skipped; otherwise I type the number (4/4).
+- *Then* the bot confirms "✅ Готово! <address>: черга X.Y", and I receive alerts for that queue.
+- *Given* I send /stop or block the bot, *then* I stop receiving alerts.
+- Replies arrive on the next tick (≤ ~10 min). *Given* a lookup error, *then* I'm asked to retry later.
+
 ## 5. Non-functional requirements
 
 - Timezone: all times are Europe/Kyiv, regardless of where the job runs.
@@ -91,4 +105,7 @@ As a household member, I want a push N minutes before a scheduled outage so that
 | R5 | Emergency outages are not in the schedule | Limitation | Out of scope. A future option is a "power sensor" approach like SvitloBot. |
 | A1 | Slot colours: red = outage, yellow = possible, white/green = power | Assumption | Verify against the live API (R2). |
 | Q1 | Is bezsvitla.com.ua a better or extra source? | Open | Third-party aggregator; could not be reviewed from the build environment. Keep ZTOE as the primary source. |
-| Q2 | Should one instance serve several addresses? | Open | Next iteration if needed. |
+| Q2 | Several addresses per person (home + parents)? | Open | v0.3 candidate. |
+| R6 | Private repo: ~4,300 Actions min/month vs 2,000 free | Risk | Make the repo public (code has no secrets), or move the bot to an always-on free host. |
+| R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Risk | Acceptable for a few friends. Move to a durable store if usage grows. |
+| R5b | Live API verified from GitHub runners on 2026-10-13 (districts, villages, streets) | Resolved | R2/R3 closed. |

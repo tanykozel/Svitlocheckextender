@@ -13,7 +13,8 @@ from .api import ApiError, GpvClient
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
-from .telegram import TelegramError, get_me, recent_chats, send_message
+from .bot import Bot, BotState, Subscription
+from .telegram import TelegramError, answer_callback, get_me, get_updates, recent_chats, send_message
 
 
 def _env_int(name: str) -> int | None:
@@ -32,10 +33,7 @@ def _load_state(path: Path) -> State:
 
 
 def _save_state(path: Path, state: State) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(state.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    _write_json(path, state.to_dict())
 
 
 def _queue(args: argparse.Namespace) -> tuple[int, int]:
@@ -145,6 +143,57 @@ def cmd_telegram_setup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _telegram_gone(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return isinstance(exc, TelegramError) and any(
+        marker in text for marker in ("blocked by the user", "chat not found", "user is deactivated", "kicked")
+    )
+
+
+def cmd_bot(args: argparse.Namespace) -> int:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        _annotate("warning", "TELEGRAM_BOT_TOKEN is not set; the bot is idle")
+        return 0
+    path = Path(args.state)
+    try:
+        state = BotState.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        state = BotState()
+    except (OSError, ValueError):
+        print(f"warning: unreadable bot state {path}; starting empty", file=sys.stderr)
+        state = BotState()
+
+    # The owner's address from repository variables counts as a subscription too.
+    owner, queue, subqueue = (os.environ.get("TELEGRAM_CHAT_ID", ""), _env_int("SVITLO_QUEUE"),
+                              _env_int("SVITLO_SUBQUEUE"))
+    if owner and queue is not None and subqueue is not None and owner not in state.subs:
+        state.subs[owner] = Subscription(queue, subqueue, os.environ.get("SVITLO_LABEL", ""))
+
+    bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state)
+    try:
+        updates = get_updates(token, state.offset)
+        bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
+        print(f"processed {len(updates)} message(s)")
+    except TelegramError as exc:
+        print(f"warning: could not read messages: {exc}")
+    # Save before alerts so answered messages are never processed twice.
+    _write_json(path, state.to_dict())
+
+    lead = timedelta(minutes=_env_int("SVITLO_LEAD_MINUTES") or 30)
+    sent = bot.send_alerts(datetime.now(KYIV), lead, is_gone=_telegram_gone)
+    _write_json(path, state.to_dict())
+    print(f"subscribers: {len(state.subs)}, alerts sent: {sent}")
+    return 0
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="svitlo_notifier", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -154,6 +203,10 @@ def build_parser() -> argparse.ArgumentParser:
     lookup.add_argument("--city")
     lookup.add_argument("--street")
     lookup.set_defaults(func=cmd_lookup)
+
+    bot = sub.add_parser("bot", help="answer bot messages (address quiz) and send alerts to all subscribers")
+    bot.add_argument("--state", default=os.environ.get("SVITLO_BOT_STATE", ".state/bot.json"))
+    bot.set_defaults(func=cmd_bot)
 
     tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
     tg.set_defaults(func=cmd_telegram_setup)

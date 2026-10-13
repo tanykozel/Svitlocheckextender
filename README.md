@@ -58,6 +58,30 @@ Every alert is sent once. A schedule change re-plans upcoming alerts automatical
 For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
 (Settings → Secrets and variables → Actions).
 
+## Share with friends (address quiz in the bot)
+
+Friends don't need GitHub or any setup. They open your bot, press **Start**, and answer 4 questions with buttons
+or short text: **district → town/village → street → house**. The bot then replies
+"✅ Готово! … черга 3.1" and sends them alerts for their own address.
+
+| Command | What it does |
+|---|---|
+| `/start` | start (or redo) the address quiz |
+| `/status` | current state and the next changes for my address |
+| `/stop` | unsubscribe |
+| `/help` | short help |
+
+Notes:
+- **Replies arrive within ~10 minutes, not instantly.** The bot runs in short "ticks" on GitHub Actions
+  rather than on an always-on server. Telegram keeps messages for 24 hours, so nothing is lost between ticks.
+- **Turn it on:** add the repository **variable** `BOT_ENABLED` = `true`
+  (Settings → Secrets and variables → Actions → Variables). Secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` must already be set.
+- **Cost:** a run every 10 minutes is ~4,300 runner-minutes a month, because GitHub rounds every run up to a full minute.
+  That is free in a **public** repository but above the 2,000 free minutes of a private one.
+- Optional polish: send `/setcommands` to @BotFather and paste the command list above, so friends see a menu.
+- Subscribers are stored in the Actions cache (`.state/bot.json`), not in the code.
+  If the bot is switched off for more than 7 days, GitHub deletes the cache and friends need to send `/start` again.
+
 ## Setup
 
 **No install needed:** in the GitHub repo, open Actions → **Find my queue** → Run workflow. Run it with all fields
