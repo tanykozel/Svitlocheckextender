@@ -137,3 +137,17 @@ class PlannerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UkrainianGrammarTests(unittest.TestCase):
+    def test_next_day_times_read_naturally(self):
+        raw = day_slots("13.10.2026", block(20, 22)) + day_slots("14.10.2026", block(6, 10))
+        messages, _ = plan(raw, at(21, 30), State(), Settings(lead=timedelta(minutes=30), notify_changes=False))
+        self.assertIn("Наступного разу мене вимкнуть завтра о 06:00", messages[0])
+        self.assertNotIn("о завтра", messages[0])
+
+    def test_outage_crossing_midnight(self):
+        raw = day_slots("13.10.2026", block(22, 24)) + day_slots("14.10.2026", block(0, 2))
+        messages, _ = plan(raw, at(21, 40), State(), Settings(lead=timedelta(minutes=30), notify_changes=False))
+        self.assertIn("о 22:00, мене вимкнуть", messages[0])
+        self.assertIn("до 02:00 завтра", messages[0])

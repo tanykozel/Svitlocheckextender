@@ -1,183 +1,152 @@
-# Svitlo notifier: «Лампочка Люся 💡» (@svitlo_lusia_zt_bot)
+# «Лампочка Люся 💡»: outage alerts for Zhytomyr oblast
 
-The official **Svitlochek** app (АТ «Житомиробленерго», `ua.com.ztoe.outages`) shows the
-hourly outage schedule, but it does **not warn you before power goes off or comes back**.
-This small service fills that gap: it reads the same public ZTOE schedule for your queue
-(черга / підчерга) and sends a **phone push notification** a set number of minutes before each change.
+**Telegram bot: [@svitlo_lusia_zt_bot](https://t.me/svitlo_lusia_zt_bot)** · display name «Світло Житомир 💡 Графік відключень»
 
-No account with ZTOE is needed, and none is created.
+The official **Svitlochek** app (АТ «Житомиробленерго», `ua.com.ztoe.outages`) shows the hourly outage
+schedule, but it does **not warn you before the power goes off or comes back**. Люся fills that gap: she reads
+the same public ZTOE schedule for your queue (черга / підчерга) and sends a **Telegram push alert** before every
+change, tells you **how long** each outage lasts, and lets you know when the **schedule changes**.
 
-## What you get
+- No account with ZTOE, no registration: choose an address in 4 steps.
+- Unofficial tool. The schedule is planned; **emergency outages are not in it**, so Люся cannot warn about them.
+- Product spec (user stories, acceptance criteria, risks): [docs/product-spec.md](docs/product-spec.md).
 
-| Alert | Example |
-|---|---|
-| Power going off | `[Дім] 🔴 Світло вимкнуть через ~30 хв, о 08:00 (до 12:00 за графіком).` |
-| Possible outage (yellow) | `[Дім] 🟡 Можливе відключення через ~30 хв, о 18:00 (до 20:00).` |
-| Power coming back | `[Дім] 🟢 Світло мають увімкнути через ~30 хв, о 12:00.` |
-| Schedule published / changed | `[Дім] 📅 Графік на 14.10 змінено: • 00:00–04:00` |
+---
 
-Every alert is sent once. A schedule change re-plans upcoming alerts automatically.
+## For users
 
-## Delivery channels (choose one or both)
+### Getting started
+1. Open **https://t.me/svitlo_lusia_zt_bot** and press **Start**.
+2. Answer 4 questions with buttons **or** by typing: **district → town/village → street → house number**.
+   For example, type «звягельський», then «сусли». If the street is all in one queue, the house question is skipped.
+3. Люся confirms: «✅ Готово! с. Сусли, вул. Гранітна 12: черга 1.2. Тепер я попереджатиму тебе за 30 хв…»
 
-1. **ntfy push**, the simplest option, with no account and no bot.
-   Install the free *ntfy* app ([Android](https://play.google.com/store/apps/details?id=io.heckel.ntfy) /
-   [iOS](https://apps.apple.com/app/ntfy/id1625396347)), tap **+**, and subscribe to a topic name you invent,
-   for example `svitlo-dim-k7x29q`. Anyone who knows the topic can read it, so make the name hard to guess.
-   Set `NTFY_TOPIC` to the same name.
-2. **Telegram**. Your own bot sends the alerts, and Telegram shows them as normal push notifications.
-   See [Create the Telegram bot](#create-the-telegram-bot).
+If something isn't found, Люся asks you to check the spelling and waits for a corrected answer.
 
-## Create the Telegram bot
+### Menu (☰ button next to the message box)
+| Menu item | Command | What it does |
+|---|---|---|
+| Обрати адресу | `/start` | start the address quiz. If you're already subscribed, Люся only reminds you of your address. |
+| Графік на сьогодні й завтра | `/schedule` | outage windows, their length, total hours without power, and the official link |
+| Стан за графіком | `/status` | what the **schedule** says now and the next changes (not the real power state) |
+| Коли попереджати | `/settings` | warn 15, **30** (default) or 60 minutes before each change |
+| Змінити адресу | `/change` | choose another address. It **replaces** the current one: one address per person. |
+| Відписатися | `/stop` | stop all alerts |
+| Про Люсю і допомога | `/help` | short help |
 
-1. In Telegram, open [@BotFather](https://t.me/BotFather) (blue tick) and send `/newbot`.
-2. Enter a display name, e.g. `Світло Житомир 💡 Графік відключень`, then a username ending in `bot`, e.g. `svitlo_lusia_zt_bot`.
-3. BotFather replies with a **token** like `123456789:AA...`. Treat it like a password: never post or commit it.
-   If it leaks, send `/revoke` to BotFather to get a new one.
-4. Open your new bot (the `t.me/...` link BotFather gives you) and press **Start**.
-   Telegram bots cannot message you first, so this step is required.
-   *Family alerts:* create a group, add the bot to it, and send any message in the group.
-5. Find your chat ID and send a test message.
+Anything else (random text, stickers, photos, unknown commands) gets:
+«Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help.»
 
-   **In the browser (no install):** in the GitHub repo, open Settings → Secrets and variables → Actions,
-   and add the secret `TELEGRAM_BOT_TOKEN`. Then go to Actions → **Telegram setup** → **Run workflow**.
-   Open the finished run, and the "Check bot and chat" step lists your chat ID. Add it as the secret
-   `TELEGRAM_CHAT_ID` and run the workflow again to get the test message.
+### What the alerts look like
+These are the exact texts the code produces:
 
-   **On your computer** (Python 3.10+, in the repo folder; on Windows PowerShell use `$env:NAME='value'` instead of `export`):
+```text
+🔴 За ~30 хв, о 20:00, мене вимкнуть 😔
+Без світла ~2 год, до 22:00 (за графіком).
+Заряди телефон і павербанк 🔋
+Повний графік: /schedule або https://www.ztoe.com.ua/unhooking-search.php
 
-   ```bash
-   export TELEGRAM_BOT_TOKEN='123456789:AA...'
-   python -m svitlo_notifier telegram-setup          # shows the bot name and your chat id
-   export TELEGRAM_CHAT_ID='<id from the list>'      # group ids start with -100
-   python -m svitlo_notifier telegram-setup          # sends "✅ Svitlo notifier підключено"
-   ```
+🟢 Я повертаюся! За ~30 хв, о 22:00, світло мають увімкнути 💡
+Наступного разу мене вимкнуть завтра о 06:00 - світло буде ~8 год.
 
-6. Optional polish in BotFather: `/setuserpic` for an avatar (ready-made: [assets/lyusya-avatar.png](assets/lyusya-avatar.png), the persona «Лампочка Люся»; or the plain [assets/bot-avatar.png](assets/bot-avatar.png)), and `/setdescription` for the text people see before pressing Start.
+📅 З'явився графік на 14.10:
+• 06:00–10:00 (4 год)
+Разом без світла: 4 год
 
-**Switching to another bot later** (e.g. a new username or account): put the new bot's token in the
-`TELEGRAM_BOT_TOKEN` secret. On the next run the bot detects the change: it resets its message counter
-and menu, and **keeps all subscriptions**. Each person only has to press **Start** in the new bot.
-
-For GitHub Actions, store the two values as repository **secrets** `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`
-(Settings → Secrets and variables → Actions).
-
-## Share with friends (address quiz in the bot)
-
-Link to share: **https://t.me/svitlo_lusia_zt_bot**
-
-Friends don't need GitHub or any setup. They open your bot, press **Start**, and answer 4 questions with buttons
-or short text: **district → town/village → street → house**. The bot then replies
-"✅ Готово! … черга 3.1" and sends them alerts for their own address.
-
-| Command | What it does |
-|---|---|
-| `/start` | choose an address (one per person); if already subscribed, offers "change" or "keep" |
-| `/change` | pick a different address (replaces the current one) |
-| `/schedule` | today's and tomorrow's outage windows, their length, and total hours without power, plus a link to the official schedule |
-| `/status` | what the **schedule** says now and the next changes (not the real power state, so emergency outages aren't visible) |
-| `/settings` | how many minutes before a change to warn: 15, 30 (default) or 60 |
-| `/test` | *(hidden: not in the menu or /help, but works when typed)* sends one example of every alert type for my address, marked "🧪 ТЕСТ" |
-| `/stop` | unsubscribe |
-| `/help` | short help |
-
-Alerts say how long an outage lasts ("Без світла ~4 год, до 12:00"). The "power back" alert names the next outage.
-Each alert links to the full schedule on [ztoe.com.ua](https://www.ztoe.com.ua/unhooking-search.php).
-
-**How often it checks:** the schedule is read every 10 minutes (one GitHub Actions run). An alert goes out on the
-first run inside the user's warning window, so a 30-minute setting arrives ~20–30 minutes ahead.
-With 15 minutes, a late GitHub run can occasionally make the alert arrive only a few minutes ahead.
-Schedule changes and newly published days are reported on the next run (≤ ~10 min).
-
-**If ZTOE moves an address to another queue:** every 6 hours the bot re-checks each subscriber's street and house.
-If the queue changed, it switches automatically and tells the user ("було 3.1, тепер 4.2").
-If the house can no longer be found, it keeps the old queue and asks the user to check the address with `/change`.
-
-Notes:
-- **Replies arrive within ~10 minutes, not instantly.** The bot runs in short "ticks" on GitHub Actions
-  rather than on an always-on server. Telegram keeps messages for 24 hours, so nothing is lost between ticks.
-- **Turn it on:** add the repository **variable** `BOT_ENABLED` = `true`
-  (Settings → Secrets and variables → Actions → Variables). Secrets `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` must already be set.
-- **Cost:** a run every 10 minutes is ~4,300 runner-minutes a month, because GitHub rounds every run up to a full minute.
-  That is free in a **public** repository but above the 2,000 free minutes of a private one.
-- Optional polish: send `/setcommands` to @BotFather and paste the command list above, so friends see a menu.
-- Subscribers are stored in the Actions cache (`.state/bot.json`), not in the code.
-  **Encrypt them** (strongly recommended for a public repository): add a repository **secret** `SVITLO_STATE_KEY`
-  with a long random passphrase (30+ characters, e.g. from a password manager), and keep a copy somewhere safe.
-  From the next run, the state is stored only as `bot.json.enc` (Fernet: AES + HMAC). Without the key nobody,
-  not even you, can read it. If the key is lost, friends simply send `/start` again.
-  Chat ids are never printed in run logs, which are public in a public repository.
-  If the bot is switched off for more than 7 days, GitHub deletes the cache and friends need to send `/start` again.
-
-### Live testing with instant replies
-
-Actions → **Outage alerts** → **Run workflow** → set **stay_minutes** (e.g. `15`) → Run.
-For that many minutes (max 30) the bot listens continuously and answers within 1–2 seconds,
-using Telegram long polling. In a private repo, each minute awake costs one free Actions minute.
-
-
-**No install needed:** in the GitHub repo, open Actions → **Find my queue** → Run workflow. Run it with all fields
-empty to list districts (REM), then fill in the id from the run summary to go one level deeper
-(city → street → houses with their `черга X.Y`). Fill *queue* and *sub-queue* to see your current schedule.
-
-**On your computer:** requires Python 3.10+ and nothing else (standard library only).
-
-```bash
-# 1. Find your queue: REM (district) -> city -> street -> house
-python -m svitlo_notifier lookup
-python -m svitlo_notifier lookup --rem <id>
-python -m svitlo_notifier lookup --city <id>
-python -m svitlo_notifier lookup --street <id>      # prints "черга 3.1  <houses>"
-
-# 2. See what the schedule looks like now
-python -m svitlo_notifier status --queue 3 --subqueue 1
-
-# 3. Try alerts without sending anything
-python -m svitlo_notifier check --queue 3 --subqueue 1 --dry-run --lead 120
-
-# 4. Run for real every 5–10 minutes (cron, Task Scheduler, or GitHub Actions below)
-NTFY_TOPIC=svitlo-dim-k7x29q SVITLO_QUEUE=3 SVITLO_SUBQUEUE=1 SVITLO_LABEL=Дім \
-  python -m svitlo_notifier check
+⚠️ Житомиробленерго змінило чергу для твоєї адреси (…): було 3.1, тепер 4.2.
+Я вже стежу за новою чергою 👀
 ```
 
-Settings (flag or environment variable):
+There's also a 🟡 "possible outage" alert for yellow slots. Every alert is sent **once**.
 
-| Setting | Env | Default |
+### Good to know
+- **Replies are not instant** (yet). The bot runs in short "ticks" on GitHub Actions, so a reply can take
+  ~10–30 minutes. Telegram keeps your messages until then, and if you tap several times, only your **latest**
+  request is answered. Instant replies are planned for v0.4 (Cloudflare).
+- **One address per person.** If ZTOE moves your address to another queue, Люся notices within ~6 hours,
+  switches over and tells you.
+
+---
+
+## For the owner
+
+### Bot setup (one time)
+1. **Create the bot** in [@BotFather](https://t.me/BotFather): `/newbot`, display name `Світло Житомир 💡 Графік відключень`,
+   username `svitlo_lusia_zt_bot`. Keep the **token** secret. If it leaks, send `/revoke`.
+2. **Profile in BotFather:** `/setuserpic` with an avatar from [assets/](assets) (`lyusya-phone.png`,
+   `lyusya-vinok.png` or `lyusya-avatar.png`), then `/setabouttext` and `/setdescription` (texts in Люся's voice;
+   see the spec, section 4a). The command menu is registered **automatically** by the bot.
+3. **GitHub → Settings → Secrets and variables → Actions:**
+
+   | Kind | Name | Value |
+   |---|---|---|
+   | Secret | `TELEGRAM_BOT_TOKEN` | the token from BotFather |
+   | Secret | `TELEGRAM_CHAT_ID` | your chat id (run **Actions → Telegram setup**: the bot sends you your id in Telegram) |
+   | Secret | `SVITLO_STATE_KEY` | a long random passphrase (30+ characters). It encrypts subscriber data. Keep a copy. |
+   | Variable | `BOT_ENABLED` | `true`, to switch on the 10-minute schedule |
+
+4. **Security for a public repository:** Settings → Actions → General → *Approval for running fork pull request
+   workflows* → **Require approval for all external contributors**. Never approve PRs from strangers.
+
+**Switching to another bot later:** put the new token in `TELEGRAM_BOT_TOKEN`. On the next run the bot detects
+the change (the run log shows `bot: @username` and "New bot detected"), resets its message counter and menu, and
+**keeps all subscriptions**. People only need to press **Start** in the new bot.
+
+### How it runs
+| Workflow (Actions tab) | What it does |
+|---|---|
+| **Outage alerts** | Every ~10 min, plus **Run workflow** on demand: reads messages, answers them, sends due alerts. *stay_minutes* (max 30) keeps the bot awake with ~1-second replies and alerts checked every minute, which is handy for live testing. |
+| **Find my queue** | District → city → street → house lookup, or the live schedule for a queue (fill *queue* / *subqueue*). |
+| **Telegram setup** | Checks the token; sends each chat its id in Telegram, or a test message if `TELEGRAM_CHAT_ID` is set. |
+| **Tests** | Runs the automated tests on every push. |
+
+- **Cadence:** schedule check every 10 min; address → queue re-check every 6 h. GitHub's scheduler is "best effort"
+  and in practice sometimes skips runs for 30+ minutes. See risk R4 in the spec and the v0.4 Cloudflare plan.
+- **Cost:** $0. The repository is public, so GitHub Actions minutes are free and unlimited.
+- **Privacy:** subscriber data lives in the Actions cache, **encrypted** with `SVITLO_STATE_KEY` (Fernet, AES + HMAC).
+  Chat ids are never printed in the public run logs. With a wrong or missing key the bot stops instead of wiping
+  subscriptions. If the bot is off for more than 7 days, GitHub deletes the cache and people press Start again.
+- **Owner tool:** `/test` (hidden from the menu and help) sends one example of each alert for your address, marked 🧪 ТЕСТ.
+
+### Brand assets
+| File | What |
+|---|---|
+| `assets/lyusya-phone.png`, `assets/lyusya-vinok.png`, `assets/lyusya-avatar.png` | Люся avatars (640×640, round-crop safe) |
+| `assets/stickers/*.png` | 7 Telegram stickers (512×512): Світло є!, Мене вимкнули, Увага!, Я повернулась!, Графік, Заряджай!, Дякую! Publish them via [@Stickers](https://t.me/Stickers) → `/newpack`. |
+| `assets/demo/svitlo-demo.mp4` | 49-second demo video, built from the real bot texts |
+
+Each image and the video have a script next to them that regenerates them.
+
+---
+
+## Advanced: single address without the bot (ntfy or Telegram)
+
+The `check` command watches one queue and sends alerts via **ntfy** (free phone push app, no account) and/or a
+Telegram chat. Python 3.10+; install `cryptography` only if you use `SVITLO_STATE_KEY`.
+
+```bash
+python -m svitlo_notifier lookup                       # REM (district) -> --rem/--city/--street ids -> queue
+python -m svitlo_notifier status --queue 1 --subqueue 2
+python -m svitlo_notifier check --queue 1 --subqueue 2 --dry-run --lead 120
+NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m svitlo_notifier check   # every 5–10 min
+```
+
+| Setting | Env / flag | Default |
 |---|---|---|
 | Queue / sub-queue | `SVITLO_QUEUE`, `SVITLO_SUBQUEUE` | required |
 | Warning time | `SVITLO_LEAD_MINUTES` / `--lead` | 30 min |
 | Label in messages | `SVITLO_LABEL` / `--label` | none |
-| Skip yellow "possible" alerts | `--no-possible` | off |
-| Skip "schedule changed" alerts | `--no-changes` | off |
-| State file (what was already sent) | `SVITLO_STATE` / `--state` | `.state/state.json` |
-| Self-hosted ntfy server | `NTFY_SERVER` | `https://ntfy.sh` |
-
-## Where to run it
-
-- **Home PC, Raspberry Pi or a VPS in Ukraine (recommended).** Add a cron line:
-  `*/5 * * * * cd /path/to/repo && NTFY_TOPIC=... SVITLO_QUEUE=3 SVITLO_SUBQUEUE=1 python3 -m svitlo_notifier check`
-  This is the most punctual option, and a Ukrainian IP is never blocked by the utility's site.
-  Note: if the machine is at the same address that loses power, it can still warn you before an outage
-  but not before power returns. Use a laptop on battery, a UPS, or a remote server.
-- **GitHub Actions (free, nothing to host).** `.github/workflows/notify.yml` runs every 10 minutes.
-  Add repository **secrets** `NTFY_TOPIC` (and/or `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) and
-  **variables** `SVITLO_QUEUE`, `SVITLO_SUBQUEUE`, optionally `SVITLO_LABEL` and `SVITLO_LEAD_MINUTES`.
-  Caveats: GitHub can delay scheduled runs by several minutes at busy times, so keep the lead at 30 min or more.
-  Some Ukrainian sites also block non-Ukrainian IPs. If the run log shows the ZTOE request failing, use the home option.
+| Skip yellow / "schedule changed" alerts | `--no-possible` / `--no-changes` | off |
+| ntfy | `NTFY_TOPIC`, `NTFY_SERVER` | `https://ntfy.sh` |
 
 ## Data source and limits
-
-- The schedule comes from ZTOE's public but **undocumented** endpoints `https://www.ztoe.com.ua/gpv/api/`,
-  the same ones the open-source [SvitloYE](https://github.com/dmitthedazed/SvitloYE) app (MIT) uses.
-  ZTOE may change them without notice.
-- Alerts follow the **planned** schedule. Emergency outages ordered by Ukrenergo can happen at any time
-  and are not in the schedule.
-- This is an unofficial tool. If anything differs, [ztoe.com.ua](https://www.ztoe.com.ua) is authoritative.
+- Schedule from ZTOE's public but **undocumented** endpoints `https://www.ztoe.com.ua/gpv/api/`, the same ones the
+  open-source [SvitloYE](https://github.com/dmitthedazed/SvitloYE) app (MIT) uses. They may change without notice.
+- Alerts follow the **planned** schedule; emergency outages ordered by Ukrenergo are not in it.
+- Unofficial. If anything differs, [ztoe.com.ua](https://www.ztoe.com.ua) is authoritative.
 
 ## Development
-
 ```bash
-python -m unittest discover -s tests -v
+pip install cryptography==43.0.3
+python -m unittest discover -s tests -v      # 76 tests
 ```
-
-The product spec (problem, user stories, acceptance criteria, risks) is in [docs/product-spec.md](docs/product-spec.md).
