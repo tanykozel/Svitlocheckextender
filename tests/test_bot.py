@@ -477,3 +477,35 @@ class NotUnderstoodTests(unittest.TestCase):
         self.bot.process_updates([{"update_id": 1, "message": {"chat": {"id": 9}, "sticker": {"file_id": "x"}}},
                                   {"update_id": 2, "message": {"chat": {"id": 8}, "voice": {"file_id": "y"}}}])
         self.assertEqual([t for t in self.sent if "не розумію" in t].__len__(), 2)
+
+
+class TypedAddressTests(unittest.TestCase):
+    """Every address step accepts typed text; a miss asks to check the spelling."""
+
+    def setUp(self):
+        self.sent = []
+        self.state = BotState()
+        self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append(text), self.state)
+        self.bot.handle_text(1, "/start")
+
+    def test_district_can_be_typed(self):
+        for typed in ("Звягельський", "звягельський район", "Звягельський РЕМ", "звяг"):
+            self.bot.handle_text(1, "/start")
+            self.bot.handle_text(1, typed)
+            self.assertIn("2/4", self.sent[-1], typed)
+            self.assertEqual(self.state.sessions["1"]["rem"], "16")
+
+    def test_each_step_says_check_spelling_when_not_found(self):
+        self.bot.handle_text(1, "Атлантидський")
+        self.assertIn("Не знайшла такий район", self.sent[-1])
+        self.assertIn("Перевір написання", self.sent[-1])
+        self.bot.handle_text(1, "Звягельський")
+        self.bot.handle_text(1, "Атлантида")
+        self.assertIn("Не знайшла такий населений пункт", self.sent[-1])
+        self.bot.handle_text(1, "Сусли")
+        self.bot.handle_text(1, "Неіснуюча")
+        self.assertIn("Не знайшла таку вулицю", self.sent[-1])
+        self.bot.handle_text(1, "Центральна")
+        self.bot.handle_text(1, "999")
+        self.assertIn("Не знайшла будинок «999»", self.sent[-1])
+        self.assertNotIn("не розумію", " ".join(self.sent), "address answers are never 'not understood'")
