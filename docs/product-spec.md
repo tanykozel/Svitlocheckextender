@@ -122,6 +122,13 @@ so that the chat isn't flooded with duplicate replies.
 - *Given* the bot sends new buttons, *then* the buttons on its previous message are removed, so old choices can't be tapped.
 - Every tapped button stops loading, even when its request was ignored.
 
+**US-13 Unknown input** (Should, v0.3; requested in live testing)
+- *Given* I send text that is neither a known command nor an expected quiz answer, *then* Люся replies:
+  «Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help.»
+- *Given* I'm in the middle of the quiz and send an unknown /command, *then* I get the same hint and the quiz keeps waiting.
+- *Given* I send a sticker, photo, voice message or file, *then* I get the same hint instead of silence.
+- Typed quiz answers (village, street, house number) are never treated as "unknown".
+
 ## 4a. Voice & tone: persona «Лампочка Люся 💡» (decided 2026-10-13)
 
 | Rule | Example |
