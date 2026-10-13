@@ -97,7 +97,12 @@ Notes:
 - Subscribers are stored in the Actions cache (`.state/bot.json`), not in the code.
   If the bot is switched off for more than 7 days, GitHub deletes the cache and friends need to send `/start` again.
 
-## Setup
+### Live testing with instant replies
+
+Actions → **Outage alerts** → **Run workflow** → set **stay_minutes** (e.g. `15`) → Run.
+For that many minutes (max 30) the bot listens continuously and answers within 1–2 seconds,
+using Telegram long polling. In a private repo, each minute awake costs one free Actions minute.
+
 
 **No install needed:** in the GitHub repo, open Actions → **Find my queue** → Run workflow. Run it with all fields
 empty to list districts (REM), then fill in the id from the run summary to go one level deeper

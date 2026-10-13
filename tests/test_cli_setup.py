@@ -69,3 +69,22 @@ class BotCommandTests(unittest.TestCase):
     def test_bot_without_token_is_idle_not_failing(self):
         with mock.patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
             self.assertEqual(cli.main(["bot"]), 0)
+
+
+class StayAwakeTests(unittest.TestCase):
+    def test_keeps_long_polling_until_time_is_up(self):
+        import tempfile
+        from pathlib import Path
+
+        waits = []
+        clock = iter([0, 0, 10, 20, 31, 100])  # monotonic seconds, consumed by the loop
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
+             mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "get_updates", side_effect=lambda *a, wait=0: waits.append(wait) or []), \
+             mock.patch.object(cli.time, "monotonic", side_effect=lambda: next(clock)), \
+             redirect_stdout(io.StringIO()):
+            self.assertEqual(cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--stay-minutes", "0.6"]), 0)
+        self.assertEqual(waits[0], 0, "first read never waits")
+        self.assertTrue(all(0 < w <= 25 for w in waits[1:]), waits)
+        self.assertGreaterEqual(len(waits), 3)

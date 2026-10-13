@@ -64,12 +64,16 @@ def remove_buttons(token: str, chat_id: int, message_id: int) -> None:
         pass
 
 
-def get_updates(token: str, offset: int | None = None) -> list[dict]:
-    """Pending messages and button taps. Telegram keeps them for 24 hours until confirmed by `offset`."""
-    payload: dict = {"timeout": 0, "allowed_updates": ["message", "callback_query"]}
+def get_updates(token: str, offset: int | None = None, wait: int = 0) -> list[dict]:
+    """Pending messages and button taps. Telegram keeps them for 24 hours until confirmed by `offset`.
+
+    With `wait` > 0 Telegram holds the request open up to that many seconds and returns as soon as
+    something arrives (long polling), so replies feel instant.
+    """
+    payload: dict = {"timeout": wait, "allowed_updates": ["message", "callback_query"]}
     if offset is not None:
         payload["offset"] = offset
-    return _call(token, "getUpdates", payload)
+    return _call(token, "getUpdates", payload, timeout=wait + 15)
 
 
 def answer_callback(token: str, callback_id: str) -> None:

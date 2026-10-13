@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "*/10 * * * *" # GitHub may start scheduled runs a few minutes late
   workflow_dispatch:
+    inputs:
+      stay_minutes:
+        description: "Keep the bot awake for instant replies (minutes, max 30). 0 = answer once and stop."
+        required: false
+        default: "0"
 
 concurrency:
   group: outage-alerts
@@ -17,7 +22,7 @@ jobs:
     # Manual "Run workflow" always works (handy for testing); the 10-minute schedule needs BOT_ENABLED.
     if: github.event_name == 'workflow_dispatch' || vars.BOT_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -37,7 +42,12 @@ jobs:
           SVITLO_SUBQUEUE: ${{ vars.SVITLO_SUBQUEUE }}
           SVITLO_LABEL: ${{ vars.SVITLO_LABEL }}
           SVITLO_LEAD_MINUTES: ${{ vars.SVITLO_LEAD_MINUTES }}
-        run: python -m svitlo_notifier bot
+          SVITLO_STAY_MINUTES: ${{ inputs.stay_minutes }}
+        run: |
+          stay="${SVITLO_STAY_MINUTES:-0}"
+          # Cap at 30 minutes so a typo can't burn the free Actions minutes.
+          stay=$(python -c "import sys; print(min(30.0, max(0.0, float(sys.argv[1] or 0))))" "$stay")
+          python -m svitlo_notifier bot --stay-minutes "$stay"
       - name: Phone push via ntfy (optional)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
