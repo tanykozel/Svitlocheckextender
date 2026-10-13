@@ -82,6 +82,10 @@ first run inside the user's warning window, so a 30-minute setting arrives ~20�
 With 15 minutes, a late GitHub run can occasionally make the alert arrive only a few minutes ahead.
 Schedule changes and newly published days are reported on the next run (≤ ~10 min).
 
+**If ZTOE moves an address to another queue:** every 6 hours the bot re-checks each subscriber's street and house.
+If the queue changed, it switches automatically and tells the user ("було 3.1, тепер 4.2").
+If the house can no longer be found, it keeps the old queue and asks the user to check the address with `/change`.
+
 Notes:
 - **Replies arrive within ~10 minutes, not instantly.** The bot runs in short "ticks" on GitHub Actions
   rather than on an always-on server. Telegram keeps messages for 24 hours, so nothing is lost between ticks.

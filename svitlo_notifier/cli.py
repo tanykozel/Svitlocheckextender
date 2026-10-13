@@ -181,9 +181,11 @@ def cmd_bot(args: argparse.Namespace) -> int:
     # Save before alerts so answered messages are never processed twice.
     _write_json(path, state.to_dict())
 
-    sent = bot.send_alerts(datetime.now(KYIV), is_gone=_telegram_gone)
+    now = datetime.now(KYIV)
+    moved = bot.refresh_queues(now)
+    sent = bot.send_alerts(now, is_gone=_telegram_gone)
     _write_json(path, state.to_dict())
-    print(f"subscribers: {len(state.subs)}, alerts sent: {sent}")
+    print(f"subscribers: {len(state.subs)}, queues changed: {moved}, alerts sent: {sent}")
     return 0
 
 
