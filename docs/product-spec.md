@@ -112,6 +112,14 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - Run workflow with *stay_minutes* (≤ 30): ~1-second replies, and alerts checked every minute during the session.
 - Bot switch: a new token is detected automatically; message counter and menu reset, subscriptions kept.
 
+**US-16 Owner dashboard** (Should)
+*As the owner, I want one page with subscribers, system health and schedule-change context, so that I can see growth, notice failures and fix them, and understand how volatile the schedule is.*
+- **Subscribers:** active count, change in 7 days, joined / left, people mid-quiz, a trend line, a split by queue and by warning time.
+- **Health:** bot status (running / late / failed), number of runs and failed runs, failures by type, each with a plain "what to do" hint, links to the logs of failed runs, minutes between runs against the 10-minute target (R4), and requests by type.
+- **Context:** schedule days *published* and *changed* per day and per week across all 12 queues, the hour of day when changes happen, and changes by queue.
+- **Privacy:** only aggregate numbers are published (the `metrics` branch of a public repo). Chat ids, names and addresses never appear; a test checks this.
+- A failed or crashed run is still recorded, so it shows up on the dashboard. Every chart has a table view and supports dark mode.
+
 ## 4a. Voice & tone: persona «Лампочка Люся 💡»
 | Rule | Example |
 |---|---|
@@ -143,7 +151,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 76.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 83.
 
 ## 6. Success metrics
 - ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.
@@ -179,4 +187,5 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 |---|---|
 | v0.1 | CLI alerts for one queue (ntfy/Telegram), lookup, tests, spec |
 | v0.2 | Shared bot with address quiz; GitHub Actions ticks; stay-awake sessions |
+| v0.3.1 | Owner dashboard (US-16): subscribers, failures with fix hints, request types, run gaps, schedule-change context |
 | v0.3 | One address + change; 15/30/60 warnings; durations and /schedule; queue-move detection; latest request wins; unknown-input reply; typed answers at every step; persona Люся; encryption and log privacy; bot-switch safety; honest /status; natural Ukrainian time phrases |

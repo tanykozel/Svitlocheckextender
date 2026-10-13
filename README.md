@@ -110,6 +110,19 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
   subscriptions. If the bot is off for more than 7 days, GitHub deletes the cache and people press Start again.
 - **Owner tool:** `/test` (hidden from the menu and help) sends one example of each alert for your address, marked 🧪 ТЕСТ.
 
+### Owner dashboard
+**https://tanykozel.github.io/Svitlocheckextender/dashboard/** has three sections:
+1. **Subscribers:** active count, 7-day change, joined/left, a trend line, and splits by queue and warning time.
+2. **How the system works:** bot status, runs and failed runs (with log links), failures by type with a
+   "what to do" hint, minutes between runs (GitHub scheduler gaps), and requests by type.
+3. **Context:** how often ZTOE publishes or changes a day's schedule (per day/week, by hour, by queue). Люся
+   checks all 12 queues every ~30 minutes for this.
+
+How it works: after every run, the workflow adds the run's numbers to `history.json`, `daily.json` and `events.json`
+on the `metrics` branch. They are **aggregate numbers only**, never chat ids or addresses. The page reads them from
+there. One-time setup: **Settings → Pages → Deploy from a branch → `main` / `/docs`**. Data appears after the
+first bot run with this version.
+
 ### Brand assets
 | File | What |
 |---|---|
@@ -150,5 +163,5 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 76 tests
+python -m unittest discover -s tests -v      # 83 tests
 ```

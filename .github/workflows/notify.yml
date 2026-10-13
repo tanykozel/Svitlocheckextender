@@ -23,6 +23,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || vars.BOT_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    permissions:
+      contents: write # only to push the dashboard numbers to the `metrics` branch
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -37,6 +39,7 @@ jobs:
           key: svitlo-state-${{ github.run_id }}
           restore-keys: svitlo-state-
       - name: Answer messages and send alerts
+        id: bot
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -46,6 +49,7 @@ jobs:
           SVITLO_LEAD_MINUTES: ${{ vars.SVITLO_LEAD_MINUTES }}
           SVITLO_STAY_MINUTES: ${{ inputs.stay_minutes }}
           SVITLO_STATE_KEY: ${{ secrets.SVITLO_STATE_KEY }}
+          SVITLO_METRICS: .metrics/run.json
         run: |
           stay="${SVITLO_STAY_MINUTES:-0}"
           # Cap at 30 minutes so a typo can't burn the free Actions minutes.
@@ -71,3 +75,29 @@ jobs:
         with:
           path: .state
           key: svitlo-state-${{ github.run_id }}
+      - name: Publish dashboard numbers
+        # Aggregate numbers only (no chat ids, names or addresses), so they are safe in a public repo.
+        # Runs even when the bot step failed: a failed run is exactly what the dashboard must show.
+        if: always()
+        continue-on-error: true
+        env:
+          OUTCOME: ${{ steps.bot.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p .dash
+          if git fetch --quiet --depth 1 origin metrics; then
+            for f in history.json daily.json events.json; do
+              git show "FETCH_HEAD:$f" > ".dash/$f" 2>/dev/null || rm -f ".dash/$f"
+            done
+          fi
+          outcome="$OUTCOME"; [ "$outcome" = "skipped" ] && outcome=failure
+          python -m svitlo_notifier metrics-merge --record .metrics/run.json --into .dash \
+            --outcome "${outcome:-failure}" --url "$RUN_URL"
+          # The branch holds one commit with the latest data, so it never grows.
+          cd .dash
+          git init --quiet && git checkout --quiet -b metrics && git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit --quiet -m "Dashboard data"
+          git push --quiet --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" metrics

@@ -5,6 +5,17 @@ from contextlib import redirect_stdout
 from unittest import mock
 
 from svitlo_notifier import cli
+from tests.test_bot import FakeDirectory
+
+_no_network = mock.patch.object(cli, "GpvClient", FakeDirectory)
+
+
+def setUpModule():
+    _no_network.start()  # the bot command must never call the real ZTOE site in tests
+
+
+def tearDownModule():
+    _no_network.stop()
 
 
 def run(env, chats=(), sent=None):
@@ -73,6 +84,26 @@ class BotCommandTests(unittest.TestCase):
             self.assertEqual(calls[0][1][0], ("start", "Обрати адресу"))
             from svitlo_notifier.bot import MENU_VERSION
             self.assertEqual(json.loads(state.read_text())["menu_version"], MENU_VERSION)
+
+    def test_bot_writes_dashboard_numbers(self):
+        import json
+        import tempfile
+        from pathlib import Path
+
+        update = {"update_id": 1, "message": {"chat": {"id": 555}, "text": "/help"}}
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
+             mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "send_message", return_value=None), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lusia_zt_bot"}), \
+             mock.patch.object(cli, "get_updates", return_value=[update]), \
+             redirect_stdout(io.StringIO()):
+            metrics = Path(tmp) / "m" / "run.json"
+            self.assertEqual(cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--metrics", str(metrics)]), 0)
+            record = json.loads(metrics.read_text())
+        self.assertEqual(record["bot"], "svitlo_lusia_zt_bot")
+        self.assertEqual(record["requests"], {"/help": 1})
+        self.assertEqual(record["processed"], 1)
 
     def test_bot_without_token_is_idle_not_failing(self):
         with mock.patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):

@@ -9,6 +9,7 @@ arrive on the next tick rather than instantly.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable, Protocol
@@ -17,7 +18,7 @@ from .api import ApiError
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, plan, schedule_text,
                       summary)
 from .secure import chat_tag
-from .schedule import KYIV, Event, EventKind, merge, transitions
+from .schedule import KYIV, Event, EventKind, fingerprint, merge, transitions
 
 MAX_BUTTONS = 30
 MENU_VERSION = 5  # bump on every MENU change so Telegram's menu is refreshed
@@ -33,6 +34,10 @@ MENU = [
     ("help", "Про Люсю і допомога"),
 ]
 DEFAULT_LEAD = 30
+# Every queue is watched for the dashboard's "how often does the schedule change" chart,
+# not only the queues that have subscribers.
+WATCH_QUEUES = [(q, s) for q in range(1, 7) for s in (1, 2)]
+WATCH_EVERY = timedelta(minutes=30)
 Buttons = list[list[tuple[str, str]]]
 
 
@@ -178,6 +183,9 @@ class BotState:
     subs: dict[str, Subscription] = field(default_factory=dict)  # chat id -> subscription
     sessions: dict[str, dict] = field(default_factory=dict)  # chat id -> quiz progress
     keyboards: dict[str, int] = field(default_factory=dict)  # chat id -> message with the live buttons
+    # Dashboard context: queue "1.2" -> {"2026-10-13": fingerprint of that day's schedule}
+    watch: dict[str, dict[str, str]] = field(default_factory=dict)
+    watched_at: str = ""
 
     def switch_bot(self, bot_id: int) -> bool:
         """Adopt a new bot token. Returns True if the bot changed.
@@ -197,14 +205,16 @@ class BotState:
     def to_dict(self) -> dict:
         return {"offset": self.offset, "bot_id": self.bot_id, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
-                "sessions": self.sessions, "keyboards": self.keyboards}
+                "sessions": self.sessions, "keyboards": self.keyboards,
+                "watch": self.watch, "watched_at": self.watched_at}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
         return cls(raw.get("offset"), raw.get("bot_id"), int(raw.get("menu_version", 0)),
                    {k: Subscription.from_dict(v) for k, v in raw.get("subs", {}).items()},
                    dict(raw.get("sessions", {})),
-                   {k: int(v) for k, v in raw.get("keyboards", {}).items()})
+                   {k: int(v) for k, v in raw.get("keyboards", {}).items()},
+                {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")))
 
 
 # --- conversation ---------------------------------------------------------------------
@@ -234,6 +244,9 @@ class Bot:
         self._send = send
         self._unbutton = unbutton
         self.state = state
+        # Aggregate counters for the owner dashboard ("request:/start", "failure:ztoe", ...). No chat ids.
+        self.stats: Counter[str] = Counter()
+        self.schedule_events: list[dict] = []  # {"queue", "day", "kind": published|changed}
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -269,7 +282,8 @@ class Bot:
         elif command in ("/test", "/demo"):
             self.demo(chat_id)
         elif command == "/stop":
-            self.state.subs.pop(chat, None)
+            if self.state.subs.pop(chat, None):
+                self.stats["outcome:unsubscribed"] += 1
             self.state.sessions.pop(chat, None)
             self.send(chat_id, "Добре, більше не турбуватиму 💤 Захочеш повернути мене - надішли /start.", None)
         elif command == "/status":
@@ -441,6 +455,7 @@ class Bot:
             self.subscribe(chat_id, *found, self._label(session, text.strip()),
                            street_id=session["street"], house=wanted)
             return
+        self.stats["outcome:not_found"] += 1
         self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
                   None)
 
@@ -451,6 +466,7 @@ class Bot:
             session.setdefault("names", {})[str(found[0]["id"])] = str(found[0]["name"])
             chosen(chat_id, str(found[0]["id"]))
         elif not found:
+            self.stats["outcome:not_found"] += 1
             self.send(chat_id, f"Не знайшла {what} 🤔 Перевір написання і спробуй ще раз.", None)
         elif len(found) <= MAX_BUTTONS:
             session.setdefault("names", {}).update({str(o["id"]): str(o["name"]) for o in found})
@@ -473,6 +489,7 @@ class Bot:
                                              street_id=street_id, house=house,
                                              checked_at=datetime.now(KYIV).isoformat())
         self.state.sessions.pop(chat, None)
+        self.stats["outcome:address_changed" if old else "outcome:subscribed"] += 1
         head = "✅ Адресу змінено" if old else "✅ Готово"
         self.send(chat_id, f"{head}! {label}: черга {queue}.{subqueue}.\n"
                            f"Тепер я попереджатиму тебе за {lead} хв до вимкнення і ввімкнення світла, "
@@ -497,7 +514,11 @@ class Bot:
         for update in updates:
             if "callback_query" in update:
                 answer(update["callback_query"]["id"])  # stop every tapped button's spinner, kept or not
-        for update in latest_requests(updates):
+        latest = latest_requests(updates)
+        if len(latest) < len(updates):
+            self.stats["request:superseded"] += len(updates) - len(latest)
+        for update in latest:
+            self.stats[f"request:{self._request_kind(update)}"] += 1
             try:
                 if "callback_query" in update:
                     query = update["callback_query"]
@@ -511,11 +532,27 @@ class Bot:
                     # Stickers, photos, voice, files...: say so instead of staying silent.
                     self.send(update["message"]["chat"]["id"], NOT_UNDERSTOOD, None)
             except (ApiError, KeyError, ValueError) as exc:
+                self.stats["failure:ztoe" if isinstance(exc, ApiError) else "failure:bad_update"] += 1
                 chat_id = _chat_of(update)
                 print(f"warning: update {update.get('update_id')} failed: {exc}")
                 if chat_id is not None:
                     self.send(chat_id, "Ой, щось пішло не так під час пошуку 😕 Спробуй /start трохи пізніше.",
                               None)
+
+    def _request_kind(self, update: dict) -> str:
+        if "callback_query" in update:
+            return "button"
+        message = update.get("message") or {}
+        text = str(message.get("text", "")).strip()
+        if not text:
+            return "media" if message else "other"
+        if text.startswith("/"):
+            command = text.split()[0].lower().split("@")[0]
+            known = {"/start", "/subscribe", "/change", "/address", "/settings", "/schedule", "/test", "/demo",
+                     "/stop", "/status", "/help"}
+            return command if command in known else "unknown_command"
+        chat = str(message.get("chat", {}).get("id"))
+        return "quiz_answer" if self.state.sessions.get(chat, {}).get("step") else "unknown_text"
 
     def refresh_queues(self, now: datetime, every: timedelta = timedelta(hours=6)) -> int:
         """Re-check each subscriber's address; follow ZTOE when it moves the address to another queue.
@@ -533,6 +570,7 @@ class Bot:
                 try:
                     streets[sub.street_id] = self.dir.addresses(sub.street_id)
                 except ApiError as exc:
+                    self.stats["failure:ztoe"] += 1
                     print(f"warning: addresses for street {sub.street_id} unavailable: {exc}")
                     streets[sub.street_id] = None
             rows = streets[sub.street_id]
@@ -548,6 +586,7 @@ class Bot:
                         sub.queue, sub.subqueue = found
                         sub.alerts = State()  # new queue: start its alert history fresh
                         changed += 1
+                        self.stats["outcome:queue_moved"] += 1
                         self.send(int(chat), f"⚠️ Житомиробленерго змінило чергу для твоєї адреси ({sub.label}): "
                                              f"було {old}, тепер {sub.queue}.{sub.subqueue}.\n"
                                              "Я вже стежу за новою чергою 👀 Графік: /schedule", None)
@@ -573,6 +612,7 @@ class Bot:
                 try:
                     schedules[key] = self.dir.schedule(*key)
                 except ApiError as exc:
+                    self.stats["failure:ztoe"] += 1
                     print(f"warning: schedule {key} unavailable: {exc}")
                     schedules[key] = None  # type: ignore[assignment]
             raw = schedules[key]
@@ -583,15 +623,53 @@ class Bot:
                 for text in messages:
                     self.send(int(chat), text, None)
                     sent += 1
+                    self.stats["outcome:alert_sent"] += 1
             except Exception as exc:  # noqa: BLE001 - decide per error below
                 if is_gone(exc):
+                    self.stats["failure:chat_gone"] += 1
                     print(f"{chat_tag(chat)} blocked the bot or was deleted; unsubscribing")
                     self.state.subs.pop(chat, None)
                     continue
+                self.stats["failure:telegram_send"] += 1
                 print(f"warning: sending to {chat_tag(chat)} failed: {type(exc).__name__}; will retry next run")
                 continue
             sub.alerts = new_alerts
+        for key, raw in schedules.items():
+            if raw is not None:
+                self.track_schedule(key, raw, now)
         return sent
+
+    def watch_all_queues(self, now: datetime) -> None:
+        """Every ~30 min, look at every queue's schedule so the dashboard can show how often it changes."""
+        if self.state.watched_at and now - datetime.fromisoformat(self.state.watched_at) < WATCH_EVERY:
+            return
+        self.state.watched_at = now.isoformat()
+        for key in WATCH_QUEUES:
+            try:
+                raw = self.dir.schedule(*key)
+            except ApiError:
+                self.stats["failure:ztoe_watch"] += 1
+                continue
+            self.track_schedule(key, raw, now)
+
+    def track_schedule(self, key: tuple[int, int], raw: list[dict], now: datetime) -> None:
+        """Record when a queue's schedule for a day is published or changed (for the dashboard)."""
+        name = f"{key[0]}.{key[1]}"
+        first_look = name not in self.state.watch
+        days = self.state.watch.setdefault(name, {})
+        for day, intervals in by_day(raw).items():
+            if day < now.date():
+                continue
+            digest, old = fingerprint(intervals), days.get(day.isoformat())
+            days[day.isoformat()] = digest
+            if first_look or old == digest:
+                continue  # the first look is only a baseline
+            kind = "published" if old is None else "changed"
+            self.stats[f"schedule:{kind}"] += 1
+            self.schedule_events.append({"queue": name, "day": day.isoformat(), "kind": kind,
+                                         "at": now.isoformat(timespec="minutes")})
+        for day in [d for d in days if d < (now.date() - timedelta(days=1)).isoformat()]:
+            del days[day]
 
 
 def _chat_of(update: dict) -> int | None:
