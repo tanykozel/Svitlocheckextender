@@ -28,6 +28,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Install encryption library
+        run: pip install --quiet "cryptography==43.0.3"
       - name: Restore bot state
         uses: actions/cache/restore@v4
         with:
@@ -43,6 +45,7 @@ jobs:
           SVITLO_LABEL: ${{ vars.SVITLO_LABEL }}
           SVITLO_LEAD_MINUTES: ${{ vars.SVITLO_LEAD_MINUTES }}
           SVITLO_STAY_MINUTES: ${{ inputs.stay_minutes }}
+          SVITLO_STATE_KEY: ${{ secrets.SVITLO_STATE_KEY }}
         run: |
           stay="${SVITLO_STAY_MINUTES:-0}"
           # Cap at 30 minutes so a typo can't burn the free Actions minutes.
@@ -51,6 +54,7 @@ jobs:
       - name: Phone push via ntfy (optional)
         env:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SVITLO_STATE_KEY: ${{ secrets.SVITLO_STATE_KEY }}
           SVITLO_QUEUE: ${{ vars.SVITLO_QUEUE }}
           SVITLO_SUBQUEUE: ${{ vars.SVITLO_SUBQUEUE }}
           SVITLO_LABEL: ${{ vars.SVITLO_LABEL }}

@@ -16,6 +16,7 @@ from typing import Callable, Protocol
 from .api import ApiError
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, plan, schedule_text,
                       summary)
+from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, merge, transitions
 
 MAX_BUTTONS = 30
@@ -520,7 +521,7 @@ class Bot:
                             f"сповіщення були точні: /change (поки що - черга {sub.queue}.{sub.subqueue})")
                     self.send(int(chat), text, None)
             except Exception as exc:  # noqa: BLE001 - delivery problems are handled in send_alerts
-                print(f"warning: could not notify {chat} about its queue: {exc}")
+                print(f"warning: could not notify {chat_tag(chat)} about its queue: {type(exc).__name__}")
         return changed
 
     def send_alerts(self, now: datetime, is_gone: Callable[[Exception], bool] = lambda _e: False) -> int:
@@ -545,10 +546,10 @@ class Bot:
                     sent += 1
             except Exception as exc:  # noqa: BLE001 - decide per error below
                 if is_gone(exc):
-                    print(f"chat {chat} blocked the bot or was deleted; unsubscribing")
+                    print(f"{chat_tag(chat)} blocked the bot or was deleted; unsubscribing")
                     self.state.subs.pop(chat, None)
                     continue
-                print(f"warning: sending to {chat} failed: {exc}; will retry next run")
+                print(f"warning: sending to {chat_tag(chat)} failed: {type(exc).__name__}; will retry next run")
                 continue
             sub.alerts = new_alerts
         return sent
