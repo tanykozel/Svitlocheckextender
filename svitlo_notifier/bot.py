@@ -72,6 +72,19 @@ def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
     return rows
 
 
+def resolve_queue(rows: list[dict], house: str) -> tuple[int, int] | str:
+    """The queue for a house on a street, or "missing" / "ambiguous" when it can't be decided."""
+    queues = {(int(r["cherga"]), int(r["pidcherga"])) for r in rows if r.get("cherga") is not None}
+    if house:
+        for row in rows:
+            if row.get("cherga") is not None and house in house_numbers(str(row.get("name", ""))):
+                return int(row["cherga"]), int(row["pidcherga"])
+        return "missing"
+    if len(queues) == 1:
+        return next(iter(queues))
+    return "ambiguous" if queues else "missing"
+
+
 # --- persisted state ----------------------------------------------------------------
 
 
@@ -84,15 +97,24 @@ class Subscription:
     label: str
     alerts: State = field(default_factory=State)
     lead_minutes: int = DEFAULT_LEAD
+    # Where the queue came from, so it can be re-checked: ZTOE sometimes moves addresses
+    # to another queue. An empty street_id (owner set via variables) is never re-checked.
+    street_id: str = ""
+    house: str = ""  # normalized house number; empty when the whole street is one queue
+    checked_at: str = ""  # ISO time of the last re-check
+    problem: str = ""  # "missing" / "ambiguous" once reported, so the user is told only once
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
-                "lead_minutes": self.lead_minutes, "alerts": self.alerts.to_dict()}
+                "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
+                "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict()}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
         return cls(int(raw["queue"]), int(raw["subqueue"]), str(raw.get("label", "")),
-                   State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)))
+                   State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
+                   str(raw.get("street_id", "")), str(raw.get("house", "")),
+                   str(raw.get("checked_at", "")), str(raw.get("problem", "")))
 
 
 @dataclass
@@ -264,12 +286,11 @@ class Bot:
         session = self._session(str(chat_id))
         street_name = session.get("names", {}).get(street_id, "")
         session.update({"step": "house", "street": street_id, "street_name": street_name})
-        rows = self.dir.addresses(street_id)
-        queues = {(int(r["cherga"]), int(r["pidcherga"])) for r in rows if r.get("cherga") is not None}
-        if len(queues) == 1:
+        found = resolve_queue(self.dir.addresses(street_id), "")
+        if isinstance(found, tuple):
             # The whole street is in one queue: no need to ask for the house.
-            self.subscribe(chat_id, *queues.pop(), self._label(session))
-        elif not queues:
+            self.subscribe(chat_id, *found, self._label(session), street_id=street_id)
+        elif found == "missing":
             self.send(chat_id, "Не знайшов будинків на цій вулиці. Спробуйте /start ще раз.", None)
         else:
             self.send(chat_id, "4/4. Напишіть номер будинку (наприклад: 12 або 12А):", None)
@@ -277,11 +298,11 @@ class Bot:
     def pick_house(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
         wanted = normalize(text).replace(" ", "")
-        for row in self.dir.addresses(session["street"]):
-            if wanted in house_numbers(str(row.get("name", ""))):
-                self.subscribe(chat_id, int(row["cherga"]), int(row["pidcherga"]),
-                               self._label(session, text.strip()))
-                return
+        found = resolve_queue(self.dir.addresses(session["street"]), wanted) if wanted else "missing"
+        if isinstance(found, tuple):
+            self.subscribe(chat_id, *found, self._label(session, text.strip()),
+                           street_id=session["street"], house=wanted)
+            return
         self.send(chat_id, f"Будинок «{text.strip()}» не знайдено на цій вулиці. Перевірте номер і напишіть ще раз.",
                   None)
 
@@ -304,12 +325,15 @@ class Bot:
         street = " ".join(filter(None, (session.get("street_name", ""), house)))
         return ", ".join(filter(None, (session.get("city_name", ""), street)))
 
-    def subscribe(self, chat_id: int, queue: int, subqueue: int, label: str) -> None:
+    def subscribe(self, chat_id: int, queue: int, subqueue: int, label: str,
+                  street_id: str = "", house: str = "") -> None:
         chat = str(chat_id)
         old = self.state.subs.get(chat)
         lead = old.lead_minutes if old else DEFAULT_LEAD
         # One address per chat: the new one replaces the old, with fresh alert history.
-        self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead)
+        self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
+                                             street_id=street_id, house=house,
+                                             checked_at=datetime.now(KYIV).isoformat())
         self.state.sessions.pop(chat, None)
         head = "✅ Адресу змінено" if old else "✅ Готово"
         self.send(chat_id, f"{head}! {label}: черга {queue}.{subqueue}.\n"
@@ -348,6 +372,52 @@ class Bot:
                 if chat_id is not None:
                     self.send(chat_id, "Сталася помилка під час пошуку. Спробуйте /start ще раз трохи пізніше.",
                               None)
+
+    def refresh_queues(self, now: datetime, every: timedelta = timedelta(hours=6)) -> int:
+        """Re-check each subscriber's address; follow ZTOE when it moves the address to another queue.
+
+        One address request per street, at most every `every`. Returns how many queues changed.
+        """
+        changed = 0
+        streets: dict[str, list[dict] | None] = {}
+        for chat, sub in list(self.state.subs.items()):
+            if not sub.street_id:
+                continue
+            if sub.checked_at and now - datetime.fromisoformat(sub.checked_at) < every:
+                continue
+            if sub.street_id not in streets:
+                try:
+                    streets[sub.street_id] = self.dir.addresses(sub.street_id)
+                except ApiError as exc:
+                    print(f"warning: addresses for street {sub.street_id} unavailable: {exc}")
+                    streets[sub.street_id] = None
+            rows = streets[sub.street_id]
+            if rows is None:
+                continue  # try again next tick
+            sub.checked_at = now.isoformat()
+            found = resolve_queue(rows, sub.house)
+            try:
+                if isinstance(found, tuple):
+                    sub.problem = ""
+                    if found != (sub.queue, sub.subqueue):
+                        old = f"{sub.queue}.{sub.subqueue}"
+                        sub.queue, sub.subqueue = found
+                        sub.alerts = State()  # new queue: start its alert history fresh
+                        changed += 1
+                        self.send(int(chat), f"⚠️ Житомиробленерго змінило чергу для вашої адреси ({sub.label}): "
+                                             f"було {old}, тепер {sub.queue}.{sub.subqueue}.\n"
+                                             "Сповіщення тепер приходять за новою чергою. Графік: /schedule", None)
+                elif found != sub.problem:
+                    sub.problem = found
+                    text = ("⚠️ Не можу знайти вашу адресу в базі Житомиробленерго. Сповіщення поки йдуть за "
+                            f"чергою {sub.queue}.{sub.subqueue}. Перевірте адресу: /change"
+                            if found == "missing" else
+                            "⚠️ На вашій вулиці тепер кілька різних черг. Вкажіть номер будинку, щоб "
+                            f"сповіщення були точні: /change (поки що - черга {sub.queue}.{sub.subqueue})")
+                    self.send(int(chat), text, None)
+            except Exception as exc:  # noqa: BLE001 - delivery problems are handled in send_alerts
+                print(f"warning: could not notify {chat} about its queue: {exc}")
+        return changed
 
     def send_alerts(self, now: datetime, is_gone: Callable[[Exception], bool] = lambda _e: False) -> int:
         """Send due alerts to every subscriber; one schedule request per distinct queue."""

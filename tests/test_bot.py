@@ -240,3 +240,87 @@ class HelperTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QueueChangeTests(unittest.TestCase):
+    """US-11: ZTOE moves an address to another queue -> the bot follows and tells the user."""
+
+    def setUp(self):
+        self.sent = []
+        self.state = BotState()
+        self.dir = FakeDirectory()
+        self.calls = []
+        original = self.dir.addresses
+        self.rows = {"179892": original("179892"), "179889": original("179889")}
+        self.dir.addresses = lambda street: (self.calls.append(street), self.rows[street])[1]
+        self.bot = Bot(self.dir, lambda chat, text, buttons: self.sent.append((chat, text)), self.state)
+        self.t0 = datetime(2026, 10, 13, 9, 0, tzinfo=KYIV)
+
+    def sub(self, chat, street, house, queue=(3, 1)):
+        s = Subscription(*queue, f"Сусли {chat}", street_id=street, house=house,
+                         checked_at=self.t0.isoformat())
+        s.alerts.sent["off@x"] = "2026-10-13T08:00:00+03:00"
+        self.state.subs[str(chat)] = s
+        return s
+
+    def test_queue_moved_is_followed_and_reported_once(self):
+        sub = self.sub(1, "179892", "12а")
+        self.rows["179892"] = [{"id": "1", "name": "10 - побутові споживачі, 12А - побутові споживачі",
+                                "cherga": 4, "pidcherga": 2}]
+        self.assertEqual(self.bot.refresh_queues(self.t0 + timedelta(hours=7)), 1)
+        self.assertEqual((sub.queue, sub.subqueue), (4, 2))
+        self.assertEqual(sub.alerts.sent, {})
+        self.assertIn("було 3.1, тепер 4.2", self.sent[-1][1])
+        self.assertEqual(self.bot.refresh_queues(self.t0 + timedelta(hours=14)), 0)
+        self.assertEqual(len(self.sent), 1, "no repeat message when nothing changed")
+
+    def test_checked_at_most_every_6_hours_and_once_per_street(self):
+        self.sub(1, "179892", "12а")
+        self.sub(2, "179892", "14", queue=(5, 2))
+        self.bot.refresh_queues(self.t0 + timedelta(hours=1))
+        self.assertEqual(self.calls, [], "too soon to re-check")
+        self.bot.refresh_queues(self.t0 + timedelta(hours=6))
+        self.assertEqual(self.calls, ["179892"], "one request serves both subscribers")
+        self.assertEqual(self.sent, [])
+
+    def test_missing_house_and_split_street_warn_once_and_keep_old_queue(self):
+        house_sub = self.sub(1, "179892", "12а")
+        street_sub = self.sub(2, "179889", "", queue=(2, 2))
+        self.rows["179892"] = [{"id": "1", "name": "10 - побутові споживачі", "cherga": 3, "pidcherga": 1}]
+        self.rows["179889"] = [{"id": "1", "name": "1", "cherga": 2, "pidcherga": 2},
+                               {"id": "2", "name": "3", "cherga": 6, "pidcherga": 1}]
+        self.bot.refresh_queues(self.t0 + timedelta(hours=7))
+        texts = dict(self.sent)
+        self.assertIn("Не можу знайти вашу адресу", texts[1])
+        self.assertIn("кілька різних черг", texts[2])
+        self.assertEqual((house_sub.queue, street_sub.queue), (3, 2), "keep alerting on the last known queue")
+        self.bot.refresh_queues(self.t0 + timedelta(hours=14))
+        self.assertEqual(len(self.sent), 2, "each problem is reported only once")
+
+    def test_owner_subscription_without_street_is_not_rechecked(self):
+        self.state.subs["9"] = Subscription(3, 1, "owner")
+        self.bot.refresh_queues(self.t0 + timedelta(days=1))
+        self.assertEqual(self.calls, [])
+
+    def test_api_error_retries_next_tick(self):
+        sub = self.sub(1, "179892", "12а")
+
+        def down(_street):
+            raise ApiError("down")
+        self.dir.addresses = down
+        self.bot.refresh_queues(self.t0 + timedelta(hours=7))
+        self.assertEqual(sub.checked_at, self.t0.isoformat())
+
+    def test_quiz_stores_where_the_queue_came_from(self):
+        bot = Bot(FakeDirectory(), lambda *_: None, self.state)
+        bot.process_updates([{"update_id": 1, "message": {"chat": {"id": 5}, "text": "/start"}},
+                             {"update_id": 2, "callback_query": {"id": "a", "data": "r:16",
+                                                                 "message": {"chat": {"id": 5}}}},
+                             {"update_id": 3, "message": {"chat": {"id": 5}, "text": "Сусли"}},
+                             {"update_id": 4, "callback_query": {"id": "b", "data": "s:179892",
+                                                                 "message": {"chat": {"id": 5}}}},
+                             {"update_id": 5, "message": {"chat": {"id": 5}, "text": "12 А"}}])
+        sub = self.state.subs["5"]
+        self.assertEqual((sub.street_id, sub.house, sub.queue), ("179892", "12а", 3))
+        restored = BotState.from_dict(self.state.to_dict()).subs["5"]
+        self.assertEqual((restored.street_id, restored.house), ("179892", "12а"))

@@ -99,6 +99,19 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
   and the official link.
 - Schedule published/changed alerts include durations and the total.
 
+**US-11 Address moved to another queue** (Must, v0.3)
+As a subscriber, I want the bot to notice when Zhytomyroblenergo moves my address to another queue, so that my
+alerts stay correct without me re-subscribing.
+- The bot stores *where* my queue came from (street + house), not only the queue number.
+- *Given* 6 hours have passed since the last check, *when* the bot ticks, *then* it re-reads my street
+  (one request per street, shared by all subscribers on it).
+- *Given* my house is now in another queue, *then* the bot switches to it, restarts alert history, and tells me once:
+  "⚠️ … було 3.1, тепер 4.2".
+- *Given* my house is no longer found, or my street (subscribed without a house) now has several queues, *then* the bot
+  keeps the last known queue and tells me once to check the address with /change.
+- *Given* ZTOE is unavailable, *then* nothing changes and the check is retried on the next tick.
+- Out of scope: the owner's address set through repository variables is not re-checked (use the quiz instead).
+
 ## 5. Non-functional requirements
 
 **Check and notification cadence (decided):**
@@ -110,6 +123,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 | "Schedule published/changed" alert | on the next tick after ZTOE updates (≤ ~10 min) |
 | Bot reply to a message or tap | on the next tick (≤ ~10 min) |
 | Duplicates | at most one alert per change per user |
+| Address → queue re-check | every 6 h per subscriber (US-11) |
 
 
 - Timezone: all times are Europe/Kyiv, regardless of where the job runs.
