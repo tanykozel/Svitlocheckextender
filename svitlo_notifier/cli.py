@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -181,14 +182,24 @@ def cmd_bot(args: argparse.Namespace) -> int:
 
     bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
               unbutton=lambda chat, message: remove_buttons(token, chat, message))
-    try:
-        updates = get_updates(token, state.offset)
-        bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
-        print(f"processed {len(updates)} message(s)")
-    except TelegramError as exc:
-        print(f"warning: could not read messages: {exc}")
-    # Save before alerts so answered messages are never processed twice.
-    _write_json(path, state.to_dict())
+
+    def read_and_answer(wait: int) -> int:
+        try:
+            updates = get_updates(token, state.offset, wait=wait)
+            bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
+        except TelegramError as exc:
+            print(f"warning: could not read messages: {exc}")
+            return 0
+        # Save before alerts so answered messages are never processed twice.
+        _write_json(path, state.to_dict())
+        return len(updates)
+
+    handled = read_and_answer(0)
+    # "Stay awake": keep listening with long polling so replies arrive within a second or two.
+    deadline = time.monotonic() + args.stay_minutes * 60
+    while time.monotonic() < deadline - 5:
+        handled += read_and_answer(int(min(25, max(1, deadline - time.monotonic() - 5))))
+    print(f"processed {handled} message(s)")
 
     now = datetime.now(KYIV)
     moved = bot.refresh_queues(now)
@@ -217,6 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     bot = sub.add_parser("bot", help="answer bot messages (address quiz) and send alerts to all subscribers")
     bot.add_argument("--state", default=os.environ.get("SVITLO_BOT_STATE", ".state/bot.json"))
+    bot.add_argument("--stay-minutes", type=float, default=float(os.environ.get("SVITLO_STAY_MINUTES") or 0),
+                     help="keep listening this long for instant replies (for live testing); default 0")
     bot.set_defaults(func=cmd_bot)
 
     tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
