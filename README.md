@@ -21,7 +21,7 @@ change, tells you **how long** each outage lasts, and lets you know when the **s
 1. Open **https://t.me/svitlo_lyusia_zt_bot** and press **Start**.
 2. Answer 4 questions with buttons **or** by typing: **district → town/village → street → house number**.
    For example, type «звягельський», then «сусли». If the street is all in one queue, the house question is skipped.
-3. Люся confirms: «✅ Готово! с. Сусли, вул. Гранітна 12: черга 1.2. Тепер я попереджатиму тебе за 30 хв…»
+3. Люся confirms: «✅ Готово! с. Сусли, вул. Центральна 5: черга 1.2. Тепер я попереджатиму тебе за 30 хв…»
 
 If something isn't found, Люся asks you to check the spelling and waits for a corrected answer.
 
@@ -106,7 +106,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 - **Cadence:** schedule check every 10 min; address → queue re-check every 6 h. GitHub's scheduler is "best effort"
   and in practice sometimes skips runs for 30+ minutes. See risk R4 in the spec and the v0.4 Cloudflare plan.
 - **Cost:** $0. The repository is public, so GitHub Actions minutes are free and unlimited.
-- **Privacy:** subscriber data lives in the Actions cache, **encrypted** with `SVITLO_STATE_KEY` (Fernet, AES + HMAC).
+- **Privacy & security:** see the review in the spec, section 5a. Subscriber data lives in the Actions cache, **encrypted** with `SVITLO_STATE_KEY` (Fernet, AES + HMAC); only the 3 newest snapshots are kept; log labels are keyed with the secret; dependencies are hash-pinned.
   Chat ids are never printed in the public run logs. With a wrong or missing key the bot stops instead of wiping
   subscriptions. If the bot is off for more than 7 days, GitHub deletes the cache and people press Start again.
 - **Owner tool:** `/test` (hidden from the menu and help) sends one example of each alert for your address, marked 🧪 ТЕСТ.
@@ -169,8 +169,8 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 
 ## Development
 ```bash
-pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 92 tests
+pip install cryptography==43.0.3   # or, exactly as CI: pip install --require-hashes -r requirements-bot.txt
+python -m unittest discover -s tests -v      # 93 tests
 ```
 
 ### How changes are made

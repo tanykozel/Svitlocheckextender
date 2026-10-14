@@ -18,9 +18,9 @@ class FakeTelegram(BaseHTTPRequestHandler):
             status, body = 401, {"ok": False, "description": "Unauthorized"}
         elif method == "getUpdates":
             status, body = 200, {"ok": True, "result": [
-                {"message": {"chat": {"id": 1, "type": "private", "first_name": "Tetiana"}}},
+                {"message": {"chat": {"id": 1, "type": "private", "first_name": "Test User"}}},
                 {"my_chat_member": {"chat": {"id": -100, "type": "group", "title": "Сім'я"}}},
-                {"message": {"chat": {"id": 1, "type": "private", "first_name": "Tetiana"}}},
+                {"message": {"chat": {"id": 1, "type": "private", "first_name": "Test User"}}},
             ]}
         else:
             status, body = 200, {"ok": True, "result": {"username": "svitlo_bot"}}

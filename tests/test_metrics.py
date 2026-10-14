@@ -67,14 +67,14 @@ class DashboardCounterTests(unittest.TestCase):
         self.assertEqual((bot.stats["failure:chat_gone"], bot.stats["failure:telegram_send"]), (1, 1))
 
     def test_record_has_no_chat_ids_or_addresses(self):
-        self.state.subs = {"123456789": Subscription(1, 2, "с. Сусли, вул. Гранітна 12", lead_minutes=60)}
+        self.state.subs = {"123456789": Subscription(1, 2, "с. Сусли, вул. Центральна 5", lead_minutes=60)}
         self.state.sessions = {"987654321": {"step": "city"}}
         record = metrics_record(self.bot, {"username": "svitlo_lyusia_zt_bot"}, 3, 1.5)
         self.assertEqual((record["subscribers"], record["quizzes"]), (1, 1))
         self.assertEqual(record["by_queue"], {"1.2": 1})
         self.assertEqual(record["by_lead"], {"60": 1})
         text = json.dumps(record, ensure_ascii=False)
-        for secret in ("123456789", "987654321", "Сусли", "Гранітна"):
+        for secret in ("123456789", "987654321", "Сусли", "Центральна 5"):
             self.assertNotIn(secret, text)
 
 

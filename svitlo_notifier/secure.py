@@ -12,10 +12,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
+import os
+import secrets
 from pathlib import Path
 
 _SALT = b"svitlo-notifier/state/v1"
+_RUN_KEY = secrets.token_bytes(32)
 
 
 class StateKeyError(RuntimeError):
@@ -68,5 +72,13 @@ def save_json(path: Path, data: dict, passphrase: str = "") -> None:
 
 
 def chat_tag(chat: str | int) -> str:
-    """Short, stable, non-reversible label for logs, which are public in a public repository."""
-    return "chat#" + hashlib.sha256(str(chat).encode()).hexdigest()[:8]
+    """Short, stable label for logs, which are public in a public repository.
+
+    A plain hash of a chat id can be reversed by trying every possible id (they are ~10-digit numbers),
+    so the label is an HMAC keyed with the secret SVITLO_STATE_KEY: stable between runs, but
+    meaningless to anyone without the key. Without a key, a random per-run key is used (labels then
+    change every run, which is still safe).
+    """
+    secret = os.environ.get("SVITLO_STATE_KEY", "")
+    key = hashlib.sha256(b"svitlo-notifier/log-tag/v1|" + secret.encode()).digest() if secret else _RUN_KEY
+    return "chat#" + hmac.new(key, str(chat).encode(), hashlib.sha256).hexdigest()[:10]

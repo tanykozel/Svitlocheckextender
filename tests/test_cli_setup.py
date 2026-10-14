@@ -39,13 +39,13 @@ class TelegramSetupTests(unittest.TestCase):
     def test_found_chat_id_goes_to_telegram_not_to_public_logs(self):
         sent = []
         code, out = run({"TELEGRAM_BOT_TOKEN": "T", "GITHUB_ACTIONS": "true"},
-                        chats=[{"id": 670870052, "type": "private", "first_name": "Tetiana"}], sent=sent)
+                        chats=[{"id": 111222333, "type": "private", "first_name": "Test User"}], sent=sent)
         self.assertEqual(code, 0)
         self.assertIn("::notice::Found 1 chat(s)", out)
-        self.assertNotIn("670870052", out)
-        self.assertNotIn("Tetiana", out)
-        self.assertEqual(sent[0][1], 670870052)
-        self.assertIn("TELEGRAM_CHAT_ID: 670870052", sent[0][2])
+        self.assertNotIn("111222333", out)
+        self.assertNotIn("Test User", out)
+        self.assertEqual(sent[0][1], 111222333)
+        self.assertIn("TELEGRAM_CHAT_ID: 111222333", sent[0][2])
 
     def test_sends_test_message_when_chat_id_set(self):
         sent = []
@@ -53,7 +53,7 @@ class TelegramSetupTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sent[0][:2], ("T", "42"))
         self.assertNotIn("::", out, "annotations only on GitHub Actions")
-        self.assertNotIn("42", out.replace("chat#", ""), "chat id is not logged")
+        self.assertNotRegex(out, r"(?<![0-9a-f])42(?![0-9a-f])", "chat id is not logged (tags are random hex)")
 
     def test_missing_token_fails(self):
         code, _ = run({})
@@ -162,7 +162,7 @@ class BotSwitchTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bot.json"
             old = BotState(offset=900_000, bot_id=111, menu_version=5,
-                           subs={"42": Subscription(1, 2, "с. Сусли, вул. Гранітна 12")},
+                           subs={"42": Subscription(1, 2, "с. Сусли, вул. Центральна 5")},
                            sessions={"42": {"step": "city"}}, keyboards={"42": 5})
             save_json(path, old.to_dict())
             offsets = []

@@ -12,7 +12,7 @@ class SecureStateTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.path = Path(self.dir.name) / "bot.json"
-        self.data = {"subs": {"670870052": {"label": "с. Сусли, вул. Гранітна 12"}}}
+        self.data = {"subs": {"111222333": {"label": "с. Сусли, вул. Центральна 5"}}}
 
     def tearDown(self):
         self.dir.cleanup()
@@ -21,7 +21,7 @@ class SecureStateTests(unittest.TestCase):
         save_json(self.path, self.data, "a long passphrase")
         self.assertFalse(self.path.exists())
         blob = (Path(self.dir.name) / "bot.json.enc").read_bytes()
-        self.assertNotIn(b"670870052", blob)
+        self.assertNotIn(b"111222333", blob)
         self.assertNotIn("Сусли".encode(), blob)
         self.assertEqual(load_json(self.path, "a long passphrase"), self.data)
 
@@ -44,8 +44,20 @@ class SecureStateTests(unittest.TestCase):
         self.assertIsNone(load_json(Path(self.dir.name) / "none.json"))
 
     def test_chat_tag_hides_the_id(self):
-        self.assertNotIn("670870052", chat_tag(670870052))
-        self.assertEqual(chat_tag(670870052), chat_tag("670870052"))
+        self.assertNotIn("111222333", chat_tag(111222333))
+        self.assertEqual(chat_tag(111222333), chat_tag("111222333"))
+
+    def test_chat_tag_cannot_be_reversed_without_the_secret_key(self):
+        import hashlib
+        import os
+        from unittest import mock
+        plain = hashlib.sha256(b"111222333").hexdigest()
+        with mock.patch.dict(os.environ, {"SVITLO_STATE_KEY": "a long secret passphrase"}):
+            tag = chat_tag(111222333)
+            self.assertEqual(tag, chat_tag(111222333), "stable within the same key")
+        self.assertNotIn(plain[:8], tag, "not a plain hash anyone could recompute")
+        with mock.patch.dict(os.environ, {"SVITLO_STATE_KEY": "another key"}):
+            self.assertNotEqual(tag, chat_tag(111222333))
 
     def test_bot_command_will_not_overwrite_state_with_a_wrong_key(self):
         import io

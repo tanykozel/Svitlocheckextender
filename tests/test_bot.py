@@ -526,7 +526,7 @@ class TypedAddressTests(unittest.TestCase):
 class RetireOldQuestionTests(unittest.TestCase):
     def test_old_change_or_keep_buttons_disappear_on_next_start(self):
         removed = []
-        state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Гранітна")}, keyboards={"7": 555})
+        state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Центральна")}, keyboards={"7": 555})
         bot = Bot(FakeDirectory(), lambda chat, text, buttons: None, state, unbutton=lambda c, m: removed.append((c, m)))
         bot.handle_text(7, "/start")
         self.assertEqual(removed, [(7, 555)], "the old Змінити/Залишити buttons are taken off")
@@ -538,12 +538,12 @@ class SubscribedUserRepliesTests(unittest.TestCase):
 
     def setUp(self):
         self.sent = []
-        self.state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Гранітна")})
+        self.state = BotState(subs={"7": Subscription(1, 2, "с. Сусли, вул. Центральна")})
         self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append(text), self.state)
 
     def test_start_shows_address_reminder(self):
         self.bot.handle_text(7, "/start")
-        self.assertEqual(self.sent, ["Я вже стежу за твоєю адресою: с. Сусли, вул. Гранітна (черга 1.2) 💡\n"
+        self.assertEqual(self.sent, ["Я вже стежу за твоєю адресою: с. Сусли, вул. Центральна (черга 1.2) 💡\n"
                                      "Щоб змінити її, обери «Змінити адресу» в меню ☰."])
 
     def test_unexpected_text_says_not_understood_not_the_address(self):
