@@ -9,6 +9,7 @@ arrive on the next tick rather than instantly.
 from __future__ import annotations
 
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -161,18 +162,23 @@ class Subscription:
     house: str = ""  # normalized house number; empty when the whole street is one queue
     checked_at: str = ""  # ISO time of the last re-check
     problem: str = ""  # "missing" / "ambiguous" once reported, so the user is told only once
+    # The bot this person is known to reach us on (they wrote to it, or it delivered a message to them).
+    # After a bot switch, old subscribers count as active only once the new bot reaches them.
+    bot_id: int | None = None
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
                 "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
-                "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict()}
+                "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict(),
+                "bot_id": self.bot_id}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
         return cls(int(raw["queue"]), int(raw["subqueue"]), str(raw.get("label", "")),
                    State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
                    str(raw.get("street_id", "")), str(raw.get("house", "")),
-                   str(raw.get("checked_at", "")), str(raw.get("problem", "")))
+                   str(raw.get("checked_at", "")), str(raw.get("problem", "")),
+                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None)
 
 
 @dataclass
@@ -247,6 +253,8 @@ class Bot:
         # Aggregate counters for the owner dashboard ("request:/start", "failure:ztoe", ...). No chat ids.
         self.stats: Counter[str] = Counter()
         self.schedule_events: list[dict] = []  # {"queue", "day", "kind": published|changed}
+        self.reply_waits: list[int] = []  # seconds each answered message waited for this run (SLA)
+        self.queued_at_start: int | None = None  # messages already waiting when the run started
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -487,7 +495,8 @@ class Bot:
         # One address per chat: the new one replaces the old, with fresh alert history.
         self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
                                              street_id=street_id, house=house,
-                                             checked_at=datetime.now(KYIV).isoformat())
+                                             checked_at=datetime.now(KYIV).isoformat(),
+                                             bot_id=self.state.bot_id)
         self.state.sessions.pop(chat, None)
         self.stats["outcome:address_changed" if old else "outcome:subscribed"] += 1
         head = "✅ Адресу змінено" if old else "✅ Готово"
@@ -508,7 +517,21 @@ class Bot:
 
     # tick -----------------------------------------------------------------------------
 
-    def process_updates(self, updates: list[dict], answer: Callable[[str], None] = lambda _id: None) -> None:
+    def mark_reachable(self, chat_id) -> None:
+        sub = self.state.subs.get(str(chat_id))
+        if sub is not None and self.state.bot_id is not None:
+            sub.bot_id = self.state.bot_id
+
+    def process_updates(self, updates: list[dict], answer: Callable[[str], None] = lambda _id: None,
+                        now: float | None = None) -> None:
+        now = time.time() if now is None else now
+        for update in updates:
+            chat_id = _chat_of(update)
+            if chat_id is not None:
+                self.mark_reachable(chat_id)  # they wrote to this bot, so it can reach them
+            sent_at = (update.get("message") or {}).get("date")
+            if sent_at:  # how long the message waited for a run to pick it up (button taps carry no time)
+                self.reply_waits.append(max(0, int(now - int(sent_at))))
         if updates:
             self.state.offset = max(int(u["update_id"]) for u in updates) + 1
         for update in updates:
@@ -624,6 +647,7 @@ class Bot:
                     self.send(int(chat), text, None)
                     sent += 1
                     self.stats["outcome:alert_sent"] += 1
+                    self.mark_reachable(chat)
             except Exception as exc:  # noqa: BLE001 - decide per error below
                 if is_gone(exc):
                     self.stats["failure:chat_gone"] += 1
@@ -667,18 +691,17 @@ class Bot:
                 continue
             codes, old = day_codes(day, intervals), days.get(day.isoformat())
             days[day.isoformat()] = codes
-            if first_look or old == codes:
-                continue  # the first look is only a baseline
+            if first_look or old == codes or (old is not None and len(old) != len(codes)):
+                continue  # the first look (or one stored in an older format) is only a baseline
             midnight = datetime.combine(day, datetime.min.time(), KYIV)
             event = {"queue": name, "day": day.isoformat(), "at": now.isoformat(timespec="minutes")}
             if old is None:
                 event.update(kind="published", notice_min=_minutes(midnight - now))
             else:
                 event["kind"] = "changed"
-                if len(old) == len(codes):
-                    first = next(i for i, (a, b) in enumerate(zip(old, codes)) if a != b)
-                    event["notice_min"] = _minutes(midnight + timedelta(minutes=30 * first) - now)
-                    event["more_off_min"] = 30 * (codes.count("x") - old.count("x"))
+                first = next(i for i, (a, b) in enumerate(zip(old, codes)) if a != b)
+                event["notice_min"] = _minutes(midnight + timedelta(minutes=30 * first) - now)
+                event["more_off_min"] = 30 * (codes.count("x") - old.count("x"))
             self.stats[f"schedule:{event['kind']}"] += 1
             self.schedule_events.append(event)
         for day in [d for d in days if d < (now.date() - timedelta(days=1)).isoformat()]:

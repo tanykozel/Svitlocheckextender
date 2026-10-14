@@ -78,6 +78,33 @@ class DashboardCounterTests(unittest.TestCase):
             self.assertNotIn(secret, text)
 
 
+class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
+    """After a bot switch, only people the new bot can reach count as active; reply waits feed the SLA."""
+
+    def setUp(self):
+        self.state = BotState(bot_id=2)  # the new bot
+        self.state.subs = {"1": Subscription(1, 2, "A", bot_id=1), "2": Subscription(1, 2, "B", bot_id=1)}
+        self.bot = Bot(FakeDirectory(), lambda *_a: None, self.state)
+
+    def test_old_subscribers_wait_until_they_write_to_the_new_bot(self):
+        record = metrics_record(self.bot, {}, 0, 0)
+        self.assertEqual((record["subscribers"], record["subscribers_waiting"]), (0, 2))
+        self.bot.process_updates([{"update_id": 1, "message": {"chat": {"id": 1}, "text": "/start", "date": 1000}}],
+                                 now=1090)
+        record = metrics_record(self.bot, {}, 1, 0)
+        self.assertEqual((record["subscribers"], record["subscribers_waiting"]), (1, 1))
+        self.assertEqual(record["reply_waits"], [90], "the message waited 90 s for a run")
+
+    def test_a_delivered_alert_also_counts_as_reachable(self):
+        self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))
+        self.assertEqual({s.bot_id for s in self.state.subs.values()}, {2})
+
+    def test_new_subscription_belongs_to_the_current_bot(self):
+        self.bot.subscribe(3, 1, 2, "C")
+        self.assertEqual(self.state.subs["3"].bot_id, 2)
+        self.assertEqual(BotState.from_dict(self.state.to_dict()).subs["3"].bot_id, 2)
+
+
 class ScheduleChangeTrackingTests(unittest.TestCase):
     """Context for the dashboard: how often ZTOE publishes or changes a day's schedule."""
 
@@ -101,6 +128,12 @@ class ScheduleChangeTrackingTests(unittest.TestCase):
         self.assertEqual(changed["more_off_min"], 120, "two more hours without power")
         restored = BotState.from_dict(self.state.to_dict())
         self.assertEqual(restored.watch, self.state.watch)
+
+    def test_older_storage_format_is_a_baseline_not_a_change(self):
+        self.state.watch = {"1.2": {"2026-10-13": "0123456789abcdef"}}  # fingerprint from the first version
+        self.bot.track_schedule((1, 2), TODAY, self.now)
+        self.assertEqual(self.bot.schedule_events, [], "a format upgrade is not ZTOE changing the schedule")
+        self.assertEqual(len(self.state.watch["1.2"]["2026-10-13"]), 48)
 
     def test_last_minute_and_after_the_fact_changes(self):
         self.bot.track_schedule((1, 2), TODAY, self.now)
@@ -142,7 +175,8 @@ class MergeTests(unittest.TestCase):
             day = json.loads((folder / "daily.json").read_text())["2026-10-13"]
             self.assertEqual((day["requests"], day["alerts"], day["subscribers_max"]), (2, 1, 2))
             self.assertEqual(day["failures"]["ztoe"], 1)
-            self.assertEqual(day["failed_runs"], 1)
+            all_days = json.loads((folder / "daily.json").read_text()).values()
+            self.assertEqual(sum(d["failed_runs"] for d in all_days), 1, "the crashed run is counted on its own day")
 
     def test_workflow_command_records_the_version_from_github(self):
         import io, os
