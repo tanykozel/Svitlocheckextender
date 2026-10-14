@@ -105,7 +105,8 @@ class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
         record = metrics_record(self.bot, {}, 3, 0)
         self.assertEqual(record["started"], 3, "three people opened the new bot")
         self.assertEqual(record["started_no_address"], 2, "50 and 51 have not chosen an address yet")
-        self.assertNotIn("50", json.dumps(self.state.seen), "stored as keyed tags, not chat ids")
+        self.assertTrue(all(k.startswith("chat#") for k in self.state.seen), "stored as keyed tags, not chat ids")
+        self.assertFalse({"1", "50", "51"} & set(self.state.seen))
         self.state.switch_bot(3)
         self.assertEqual(self.state.seen, {}, "counted again for a new bot")
 
