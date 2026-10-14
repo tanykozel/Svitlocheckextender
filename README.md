@@ -113,14 +113,16 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 
 ### Owner dashboard
 **https://tanykozel.github.io/Svitlocheckextender/dashboard/** has four sections:
-1. **Subscribers:** active count, 7-day change, joined/left, a trend line, and splits by queue and warning time.
-2. **How the system works:** bot status, runs and failed runs (with log links), failures by type with a
-   "what to do" hint, minutes between runs (GitHub scheduler gaps), and requests by type.
-3. **Releases & deploys:** the live version, whether its first run was OK, failures since the deploy, deploys
+1. **Subscribers:** people the **current bot** can reach (after a bot switch, others are shown as "haven't pressed
+   Start yet"), 7-day change, joined/left, a trend line, and splits by queue and warning time.
+2. **How the system works:** bot status, runs and failed runs (with log links), failures by type with a "what to do"
+   hint, minutes between runs, requests by type, and **reply time (SLA)**: how long messages waited for an answer
+   (median, p95, longest, share within 5 min, messages queued when a run started) with a recommendation when the
+   target is missed.
+3. **Context:** how often ZTOE publishes or changes a day's schedule (per day/week, by hour, by queue), and
+   **how much warning** each change gives (time from the edit to the first changed half-hour; share of last-minute changes).
+4. **Releases & deploys:** the live version, whether its first run was OK, failures since the deploy, deploys
    per week, **change failure rate** and **time to restore** (DORA metrics), plus version lines on the charts.
-4. **Context:** how often ZTOE publishes or changes a day's schedule (per day/week, by hour, by queue), and
-   **how much warning** each change gives (time from the edit to the first changed half-hour; share of last-minute changes). Люся
-   checks all 12 queues every ~30 minutes for this.
 
 How it works: after every run, the workflow adds the run's numbers to `history.json`, `daily.json` and `events.json`
 on the `metrics` branch. They are **aggregate numbers only**, never chat ids or addresses. The page reads them from
@@ -168,7 +170,7 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3
-python -m unittest discover -s tests -v      # 88 tests
+python -m unittest discover -s tests -v      # 92 tests
 ```
 
 ### How changes are made
