@@ -15,6 +15,10 @@ on:
         description: "What's new, in plain language (Markdown). The list of merged PRs is added automatically."
         required: false
         default: ""
+      target:
+        description: "Optional: an older commit on main to release (full 40-character id). Empty = latest main."
+        required: false
+        default: ""
 
 permissions:
   contents: write # to create the tag and the release
@@ -25,6 +29,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0 # to check that an optional target commit is part of main
       - name: Check the version number
         env:
           VERSION: ${{ inputs.version }}
@@ -33,14 +40,25 @@ jobs:
             echo "::error::Version must look like v0.3.3"
             exit 1
           fi
+      - name: Check the target commit
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          if [ -n "$TARGET" ]; then
+            if ! [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::target must be a full commit id that is part of main"
+              exit 1
+            fi
+          fi
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           TITLE: ${{ inputs.title }}
           NOTES: ${{ inputs.notes }}
+          TARGET: ${{ inputs.target }}
         run: |
           printf '%s\n' "$NOTES" > notes.md
-          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "${TARGET:-$GITHUB_SHA}" \
             --title "$TITLE" --notes-file notes.md --generate-notes
           echo "Published: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$VERSION"
