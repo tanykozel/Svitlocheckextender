@@ -180,7 +180,7 @@ Not held: name, @username, phone, location, message texts.
 ## 6. Success metrics
 | Metric | Target | How it is measured (owner dashboard) |
 |---|---|---|
-| Alerts on time | ≥ 95% of scheduled changes alerted at least 15 minutes before the change | Section 1 «Service levels (SLA)», next to replies within 5 min (same 95% target). Each alert records its minutes of notice; a late alert (sent with an apology) and a change that passed with no alert both count as a miss. |
+| Alerts on time | ≥ 95% of scheduled changes alerted at least 15 minutes before the change | Section 3 «How the system works» → «Alerts on time». (Section 2 «Service levels (SLA)» is the promise to users: 95% of their messages answered within 5 min.) Each alert records its minutes of notice; a late alert (sent with an apology) and a change that passed with no alert both count as a miss. |
 | Duplicate alerts | 0 per change | Prevented by design (one alert per event key) and covered by unit tests; no live counter yet. |
 | People keep the bot | More join than leave | Qualitative proxy (decision 14.10): «Joined» and «Left» tiles (left = /stop or blocked the bot). Request counts are not used, because a subscriber who only reads alerts sends no requests. |
 
