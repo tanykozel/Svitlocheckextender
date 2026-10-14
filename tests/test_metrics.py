@@ -127,6 +127,33 @@ class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
         self.assertEqual(BotState.from_dict(self.state.to_dict()).subs["3"].bot_id, 2)
 
 
+class AlertTimelinessTests(unittest.TestCase):
+    """Spec §6: >= 95% of schedule changes alerted at least 15 minutes ahead."""
+
+    def setUp(self):
+        self.state = BotState(bot_id=2)
+        self.state.subs = {"1": Subscription(1, 2, "A", lead_minutes=30, bot_id=2)}
+        self.bot = Bot(FakeDirectory(), lambda *_a: None, self.state)
+
+    def test_notice_of_each_alert_is_recorded(self):
+        self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))  # 08:00 off, 20 min ahead
+        self.bot.send_alerts(datetime(2026, 10, 13, 12, 10, tzinfo=KYIV))  # 12:00 on, sent 10 min late
+        self.assertEqual(self.bot.alert_notices, [[20, 30], [-10, 30]])
+        self.assertEqual(metrics_record(self.bot, {}, 0, 0)["alert_notices"], [[20, 30], [-10, 30]])
+        self.assertNotIn("outcome:alert_missed", self.bot.stats)
+
+    def test_event_that_passed_with_no_alert_is_missed(self):
+        self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))
+        self.bot.send_alerts(datetime(2026, 10, 13, 13, 0, tzinfo=KYIV))  # run gap: 12:00 is too old to catch up
+        self.assertEqual(self.bot.stats["outcome:alert_missed"], 1)
+        self.bot.send_alerts(datetime(2026, 10, 13, 13, 10, tzinfo=KYIV))
+        self.assertEqual(self.bot.stats["outcome:alert_missed"], 1, "counted once")
+
+    def test_first_check_is_only_a_baseline(self):
+        self.bot.send_alerts(datetime(2026, 10, 13, 13, 0, tzinfo=KYIV))
+        self.assertNotIn("outcome:alert_missed", self.bot.stats)
+
+
 class ScheduleChangeTrackingTests(unittest.TestCase):
     """Context for the dashboard: how often ZTOE publishes or changes a day's schedule."""
 

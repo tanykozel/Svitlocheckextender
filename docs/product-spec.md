@@ -178,9 +178,11 @@ Not held: name, @username, phone, location, message texts.
 **Data subject requests:** `/stop` deletes the person's record (and, with S5, every stored copy within ~30 minutes). GitHub deletes everything automatically if the bot does not run for 7 days.
 
 ## 6. Success metrics
-- ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.
-- 0 duplicate alerts per change.
-- Qualitative: users stop opening Svitlochek just to check for changes; friends recommend the bot.
+| Metric | Target | How it is measured (owner dashboard) |
+|---|---|---|
+| Alerts on time | ≥ 95% of scheduled changes alerted at least 15 minutes before the change | Section 1 «Service levels (SLA)», next to replies within 5 min (same 95% target). Each alert records its minutes of notice; a late alert (sent with an apology) and a change that passed with no alert both count as a miss. |
+| Duplicate alerts | 0 per change | Prevented by design (one alert per event key) and covered by unit tests; no live counter yet. |
+| People keep the bot | More join than leave | Qualitative proxy (decision 14.10): «Joined» and «Left» tiles (left = /stop or blocked the bot). Request counts are not used, because a subscriber who only reads alerts sends no requests. |
 
 ## 7. Risks, assumptions, decisions
 | # | Item | Status | Mitigation / note |

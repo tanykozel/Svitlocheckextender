@@ -281,6 +281,7 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
         "queued_at_start": bot.queued_at_start,
         "queued_by_kind": dict(sorted(bot.queued_by_kind.items())),
         "waits_by_kind": {k: sorted(v)[-50:] for k, v in sorted(bot.waits_by_kind.items())},
+        "alert_notices": bot.alert_notices[-500:],  # [minutes of notice, chosen warning time]; < 0 = late
         "reply_waits": waits[-200:],
         "quizzes": len(bot.state.sessions),
         "address_problems": sum(1 for s in subs if s.problem),
