@@ -119,6 +119,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - **Context:** schedule days *published* and *changed* per day and per week across all 12 queues, the hour of day when changes happen, and changes by queue.
 - **Warning before a change:** for each change, how long before the first edited half-hour it came (after the fact / < 1 h / 1–3 h / 3–6 h / 6–12 h / > 12 h), the median, the share of last-minute changes, and how much outage changes added or removed. Also how long before midnight the next day's schedule appears. *Why:* it shows how much notice people really get from ZTOE, which is the core reason Люся exists.
 - **Releases & deploys:** each run records its code version (commit) and branch. The dashboard shows the live version (release tag name when there is one), whether the first run after a deploy was OK, failures since the deploy, deploys per week, **change failure rate** (deploys followed within 1 hour by a crash or failed run; ZTOE/Telegram outages excluded) and **time to restore** (first bad run → next good run), and draws a line on the charts where a new version went live. Only runs from `main` count as production.
+- **Funnel:** *subscribed* (address chosen) and *started the bot, no address yet*, with the share who chose an address. People who opened the bot are counted as keyed tags (not chat IDs) and recounted after a bot switch.
 - **Active subscribers = reachable on the current bot.** Each subscription remembers the bot that last reached the person (they wrote to it, or it delivered an alert). After a bot switch the others are counted separately as "haven't pressed Start yet".
 - **Reply time (SLA):** every answered message records how long it waited (Telegram's send time → the run that answered it). Target: 95% answered within 5 minutes. The dashboard shows median, p95, longest wait, messages queued at run start, and recommends the always-on platform (v0.4) when the target is missed. Section order: Subscribers → How the system works → Context → Releases & deploys.
 - **Privacy:** only aggregate numbers are published (the `metrics` branch of a public repo). Chat ids, names and addresses never appear; a test checks this.
@@ -155,7 +156,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 93.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 94.
 
 ## 5a. Data protection and security review (2026-10-14)
 **Personal data held** (one record per subscriber, key = Telegram user ID; Telegram gives bots no phone numbers):

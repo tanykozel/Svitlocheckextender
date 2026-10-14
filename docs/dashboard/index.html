@@ -92,7 +92,7 @@ a { color: var(--series-1); }
     <p class="note">Numbers only. Chat ids, names and addresses never leave the encrypted bot state.</p>
     <div class="tiles" id="sub-tiles"></div>
     <div class="grid2">
-      <div class="card"><h3>Active subscribers over time</h3><p class="note">After each bot run · dashed vertical line = new version</p>
+      <div class="card"><h3>Subscribed and started over time</h3><p class="note">After each bot run · dashed vertical line = new version</p>
         <div class="chart"><canvas id="c-subs"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-subs"></div></details></div>
       <div class="card"><h3>Subscribers by queue</h3><p class="note">Черга.підчерга, right now</p>
         <div class="chart"><canvas id="c-queue"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-queue"></div></details></div>
@@ -279,9 +279,11 @@ function renderSubscribers() {
   const joined = ranged.reduce((a, r) => a + (r.outcomes?.subscribed || 0), 0);
   const left = ranged.reduce((a, r) => a + (r.outcomes?.unsubscribed || 0) + (r.failures?.chat_gone || 0), 0);
   const tiles = [
-    tile("Active subscribers", last ? last.subscribers : "–", !last ? "waiting for the first run"
-      : last.subscribers_waiting ? `on ${last.bot ? "@" + last.bot : "the current bot"} · +${last.subscribers_waiting} haven't pressed Start in it yet`
+    tile("Subscribed (address chosen)", last ? last.subscribers : "–", !last ? "waiting for the first run"
+      : last.subscribers_waiting ? `on ${last.bot ? "@" + last.bot : "the current bot"} · +${last.subscribers_waiting} from the old bot haven't pressed Start yet`
       : `on ${last.bot ? "@" + last.bot : "the current bot"} · as of ${fmtShort(last.date)}`),
+    tile("Started the bot, no address yet", last && typeof last.started_no_address === "number" ? last.started_no_address : "–",
+      last && typeof last.started === "number" ? `${last.started} opened the bot · ${last.started ? Math.round(100 * (last.started - last.started_no_address) / last.started) : 0}% chose an address` : "counted from the next run"),
     tile("Change in 7 days", last && weekAgo ? (last.subscribers - weekAgo.subscribers >= 0 ? "+" : "") + (last.subscribers - weekAgo.subscribers) : "–", weekAgo ? `was ${weekAgo.subscribers}` : "needs 7 days of data"),
     tile("Joined / left", `${joined} / ${left}`, "in the selected range"),
     tile("Choosing an address now", last ? last.quizzes ?? 0 : "–", last && last.address_problems ? `${last.address_problems} with an address problem` : "people in the middle of the quiz"),
@@ -295,9 +297,13 @@ function renderSubscribers() {
     if (!seen.has(k)) { seen.add(k); pts.push(r); }
   }
   pts.reverse();
-  chart("c-subs", "line", pts.map(r => fmtShort(r.date)), [{ label: "Subscribers", data: pts.map(r => r.subscribers),
-    borderColor: css("--series-1"), backgroundColor: css("--series-1") }], { marks: marksFor(pts) });
-  document.getElementById("t-subs").innerHTML = table(["Time", "Subscribers"], pts.slice(-48).reverse().map(r => [fmtShort(r.date), r.subscribers]));
+  const funnel = pts.some(r => typeof r.started_no_address === "number");
+  chart("c-subs", "line", pts.map(r => fmtShort(r.date)), [
+    { label: "Subscribed (address chosen)", data: pts.map(r => r.subscribers), borderColor: css("--series-1"), backgroundColor: css("--series-1") },
+    ...(funnel ? [{ label: "Started, no address yet", data: pts.map(r => r.started_no_address ?? null), borderColor: css("--series-2"), backgroundColor: css("--series-2"), spanGaps: false }] : []),
+  ], { marks: marksFor(pts) });
+  document.getElementById("t-subs").innerHTML = table(["Time", "Subscribed", "Started, no address"],
+    pts.slice(-48).reverse().map(r => [fmtShort(r.date), r.subscribers, r.started_no_address ?? "–"]));
 
   const q = Object.entries(last?.by_queue || {}).sort();
   chart("c-queue", "bar", q.map(([k]) => k), [{ label: "Subscribers", data: q.map(([, v]) => v), backgroundColor: css("--series-1") }]);

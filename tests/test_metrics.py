@@ -99,6 +99,16 @@ class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
         self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))
         self.assertEqual({s.bot_id for s in self.state.subs.values()}, {2})
 
+    def test_funnel_started_the_bot_versus_chose_an_address(self):
+        msg = lambda uid, chat, text: {"update_id": uid, "message": {"chat": {"id": chat}, "text": text, "date": 1}}
+        self.bot.process_updates([msg(1, 1, "/status"), msg(2, 50, "/help"), msg(3, 51, "/start")], now=2)
+        record = metrics_record(self.bot, {}, 3, 0)
+        self.assertEqual(record["started"], 3, "three people opened the new bot")
+        self.assertEqual(record["started_no_address"], 2, "50 and 51 have not chosen an address yet")
+        self.assertNotIn("50", json.dumps(self.state.seen), "stored as keyed tags, not chat ids")
+        self.state.switch_bot(3)
+        self.assertEqual(self.state.seen, {}, "counted again for a new bot")
+
     def test_new_subscription_belongs_to_the_current_bot(self):
         self.bot.subscribe(3, 1, 2, "C")
         self.assertEqual(self.state.subs["3"].bot_id, 2)

@@ -113,7 +113,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 
 ### Owner dashboard
 **https://tanykozel.github.io/Svitlocheckextender/dashboard/** has four sections:
-1. **Subscribers:** people the **current bot** can reach (after a bot switch, others are shown as "haven't pressed
+1. **Subscribers:** two numbers, **subscribed** (address chosen) and **started the bot but no address yet**, plus people the **current bot** can reach (after a bot switch, others are shown as "haven't pressed
    Start yet"), 7-day change, joined/left, a trend line, and splits by queue and warning time.
 2. **How the system works:** bot status, runs and failed runs (with log links), failures by type with a "what to do"
    hint, minutes between runs, requests by type, and **reply time (SLA)**: how long messages waited for an answer
@@ -170,7 +170,7 @@ NTFY_TOPIC=your-hard-to-guess-topic SVITLO_QUEUE=1 SVITLO_SUBQUEUE=2 python -m s
 ## Development
 ```bash
 pip install cryptography==43.0.3   # or, exactly as CI: pip install --require-hashes -r requirements-bot.txt
-python -m unittest discover -s tests -v      # 93 tests
+python -m unittest discover -s tests -v      # 94 tests
 ```
 
 ### How changes are made
