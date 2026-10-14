@@ -47,6 +47,18 @@ class SecureStateTests(unittest.TestCase):
         self.assertNotIn("111222333", chat_tag(111222333))
         self.assertEqual(chat_tag(111222333), chat_tag("111222333"))
 
+    def test_chat_tag_cannot_be_reversed_without_the_secret_key(self):
+        import hashlib
+        import os
+        from unittest import mock
+        plain = hashlib.sha256(b"111222333").hexdigest()
+        with mock.patch.dict(os.environ, {"SVITLO_STATE_KEY": "a long secret passphrase"}):
+            tag = chat_tag(111222333)
+            self.assertEqual(tag, chat_tag(111222333), "stable within the same key")
+        self.assertNotIn(plain[:8], tag, "not a plain hash anyone could recompute")
+        with mock.patch.dict(os.environ, {"SVITLO_STATE_KEY": "another key"}):
+            self.assertNotEqual(tag, chat_tag(111222333))
+
     def test_bot_command_will_not_overwrite_state_with_a_wrong_key(self):
         import io
         from contextlib import redirect_stdout

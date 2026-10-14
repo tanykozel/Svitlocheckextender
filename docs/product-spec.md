@@ -155,7 +155,26 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
-- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 92.
+- Dependencies: Python standard library plus `cryptography` (pinned). Automated tests: 93.
+
+## 5a. Data protection and security review (2026-10-14)
+**Personal data held** (one record per subscriber, key = Telegram user ID; Telegram gives bots no phone numbers):
+queue, address label, ZTOE street ID + house, warning time, alerts already sent, bot that last reached the person.
+Not held: name, @username, phone, location, message texts.
+
+| # | Check | Result | Action |
+|---|---|---|---|
+| S1 | Subscriber data at rest | ✅ Encrypted (Fernet = AES-128 + HMAC-SHA256; key derived with scrypt from the `SVITLO_STATE_KEY` secret) in the Actions cache, not in the repository | - |
+| S2 | Fork pull requests in a public repo | ✅ They can read the cache but only get the encrypted file; secrets are never given to fork runs; owner approval required | Keep "Require approval for all external contributors" |
+| S3 | Real personal data in the public code | ❌ **Found:** the owner's real chat ID, first name and an address were used as test data since 13.10 | Replaced with fake values (v0.3.6). Still visible in old commits: owner decides on a history rewrite (Q3) |
+| S4 | Chat labels in public logs (`chat#…`) | ❌ **Found:** an unkeyed hash of a ~10-digit ID can be reversed by trying all IDs | Now an HMAC keyed with the secret: meaningless without the key |
+| S5 | Old encrypted snapshots | ⚠️ Each run kept a new copy for up to 7 days, so /stop did not erase a person promptly | Only the 3 newest copies are kept (~30 min) |
+| S6 | Supply chain (code downloaded on every run, with the bot's secrets) | ⚠️ Python packages pinned by version only; GitHub actions by movable tags | Packages pinned by sha256 hash (`requirements-bot.txt`), actions pinned to commit SHAs |
+| S7 | Dashboard (public page) | ✅ Aggregate numbers only; tests check no IDs or addresses leak | Chart library now loaded with an integrity hash (SRI) |
+| S8 | Secrets (`TELEGRAM_BOT_TOKEN`, `SVITLO_STATE_KEY`, `TELEGRAM_CHAT_ID`) | ✅ GitHub secrets, masked in logs; never in code | Rotate the token if it ever appears in a chat or screenshot |
+| S9 | Workflow permissions | ✅ Least privilege per workflow: `contents: write` only to publish dashboard data / releases; `actions: write` only to delete old snapshots | - |
+
+**Data subject requests:** `/stop` deletes the person's record (and, with S5, every stored copy within ~30 minutes). GitHub deletes everything automatically if the bot does not run for 7 days.
 
 ## 6. Success metrics
 - ≥ 95% of scheduled changes produce an alert at least 15 minutes before the change.
@@ -178,6 +197,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 | D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
 | Q1 | bezsvitla.com.ua as an extra source? | Open | Third-party aggregator; ZTOE stays primary. |
 | Q2 | Several addresses per person (home + parents)? | Open | Candidate after v0.4. |
+| Q3 | Remove the owner's personal test data from the **old commits** of the public repository (history rewrite + force-push)? | Open (owner) | Low practical risk (an ID cannot be used to message someone who has not started a bot), but removes it from public history. |
 
 ## 8. Roadmap
 | When | Item |

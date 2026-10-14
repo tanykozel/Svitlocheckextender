@@ -74,7 +74,7 @@ class DashboardCounterTests(unittest.TestCase):
         self.assertEqual(record["by_queue"], {"1.2": 1})
         self.assertEqual(record["by_lead"], {"60": 1})
         text = json.dumps(record, ensure_ascii=False)
-        for secret in ("123456789", "987654321", "Сусли", "Гранітна"):
+        for secret in ("123456789", "987654321", "Сусли", "Центральна 5"):
             self.assertNotIn(secret, text)
 
 
