@@ -37,6 +37,9 @@ class Settings:
     notify_possible: bool = True
     notify_changes: bool = True
     label: str = ""  # e.g. "Дім" or "черга 3.1", shown in every message
+    # GitHub may skip scheduled runs for 20-50 min. An alert whose moment passed in such a gap is
+    # still sent (marked as late) while the new state lasts, instead of being dropped.
+    catch_up: timedelta = timedelta(minutes=45)
 
 
 def _hm(moment: datetime) -> str:
@@ -86,6 +89,22 @@ def _until(moment: datetime, now: datetime) -> str:
     if text.startswith("завтра "):
         return f"до {text[len('завтра '):]} завтра"
     return f"до {text}"
+
+
+def describe_late_event(event: Event, now: datetime, label: str, next_off: Event | None = None) -> str:
+    """The alert for a moment that already passed while no run was possible."""
+    prefix = f"[{label}] " if label else ""
+    sorry = "Вибач, що повідомляю із запізненням 🙏"
+    if event.kind == EventKind.OFF:
+        return (f"{prefix}🔴 {_at(event.at, now).capitalize()} мене мали вимкнути (за графіком) 😔\n"
+                f"Без світла {_until(event.until, now)}.\n{sorry}")
+    if event.kind == EventKind.POSSIBLE_OFF:
+        return (f"{prefix}🟡 {_at(event.at, now).capitalize()} почалося можливе вимкнення - "
+                f"{_until(event.until, now)}.\n{sorry}")
+    text = f"{prefix}🟢 Я повернулася! {_at(event.at, now).capitalize()} світло мали увімкнути 💡"
+    if next_off is not None:
+        text += f"\nНаступного разу мене вимкнуть {_at(next_off.at, now)}."
+    return f"{text}\n{sorry}"
 
 
 def describe_event(event: Event, now: datetime, label: str, next_off: Event | None = None) -> str:
@@ -166,15 +185,19 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
 
     timeline = merge([i for intervals in days.values() for i in intervals])
     events = transitions(timeline)
+    fresh = not state.days and not state.sent  # a new subscriber gets no "late" news about the past
+    catch_up = timedelta(0) if fresh else settings.catch_up
     for index, event in enumerate(events):
         if event.kind == EventKind.POSSIBLE_OFF and not settings.notify_possible:
             continue
-        if not (now < event.at <= now + settings.lead):
+        late = now - catch_up < event.at <= now and now < event.until
+        if not (late or now < event.at <= now + settings.lead):
             continue
         if event.key in new_state.sent:
             continue
         next_off = next((e for e in events[index + 1 :] if e.kind != EventKind.ON), None)
-        messages.append(describe_event(event, now, settings.label, next_off))
+        describe = describe_late_event if late else describe_event
+        messages.append(describe(event, now, settings.label, next_off))
         new_state.sent[event.key] = event.at.isoformat()
 
     horizon = now - timedelta(days=2)

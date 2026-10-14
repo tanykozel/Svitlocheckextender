@@ -69,6 +69,22 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan(TODAY, at(7, 0), State(), self.settings)[0], [])
         self.assertEqual(plan(TODAY, at(8, 5), State(), self.settings)[0], [])
 
+    def test_alert_missed_in_a_run_gap_is_sent_late_once(self):
+        # Lead 15 min, runs at 07:40 and then only at 12:20: the 12:00 power-back moment fell in the gap.
+        quick = Settings(lead=timedelta(minutes=15), notify_changes=False)
+        _, state = plan(TODAY, at(7, 50), State(), quick)  # the 08:00 off alert went out
+        messages, state = plan(TODAY, at(12, 20), state, quick)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("Я повернулася! О 12:00 світло мали увімкнути", messages[0])
+        self.assertIn("із запізненням", messages[0])
+        self.assertEqual(plan(TODAY, at(12, 30), state, quick)[0], [])
+
+    def test_late_alert_has_limits(self):
+        quick = Settings(lead=timedelta(minutes=15), notify_changes=False)
+        _, state = plan(TODAY, at(7, 50), State(), quick)
+        self.assertEqual(plan(TODAY, at(13, 0), state, quick)[0], [])  # too long ago
+        self.assertEqual(plan(TODAY, at(12, 20), State(), quick)[0], [])  # brand-new subscriber
+
     def test_power_back_alert(self):
         messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
         self.assertEqual(len(messages), 1)
