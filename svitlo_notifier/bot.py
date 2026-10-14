@@ -192,6 +192,9 @@ class BotState:
     # Dashboard context: queue "1.2" -> {"2026-10-13": fingerprint of that day's schedule}
     watch: dict[str, dict[str, str]] = field(default_factory=dict)
     watched_at: str = ""
+    # Everyone who opened the current bot, as keyed log tags (not chat ids) -> first day seen.
+    # Only for the dashboard's "started the bot but chose no address" count.
+    seen: dict[str, str] = field(default_factory=dict)
 
     def switch_bot(self, bot_id: int) -> bool:
         """Adopt a new bot token. Returns True if the bot changed.
@@ -206,13 +209,14 @@ class BotState:
         self.bot_id = bot_id
         if changed:
             self.offset, self.keyboards, self.sessions, self.menu_version = None, {}, {}, 0
+            self.seen = {}  # "started the bot" counts per bot
         return changed
 
     def to_dict(self) -> dict:
         return {"offset": self.offset, "bot_id": self.bot_id, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions, "keyboards": self.keyboards,
-                "watch": self.watch, "watched_at": self.watched_at}
+                "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
@@ -220,7 +224,8 @@ class BotState:
                    {k: Subscription.from_dict(v) for k, v in raw.get("subs", {}).items()},
                    dict(raw.get("sessions", {})),
                    {k: int(v) for k, v in raw.get("keyboards", {}).items()},
-                {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")))
+                {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")),
+                {str(k): str(v) for k, v in raw.get("seen", {}).items()})
 
 
 # --- conversation ---------------------------------------------------------------------
@@ -529,6 +534,7 @@ class Bot:
             chat_id = _chat_of(update)
             if chat_id is not None:
                 self.mark_reachable(chat_id)  # they wrote to this bot, so it can reach them
+                self.state.seen.setdefault(chat_tag(chat_id), datetime.now(KYIV).date().isoformat())
             sent_at = (update.get("message") or {}).get("date")
             if sent_at:  # how long the message waited for a run to pick it up (button taps carry no time)
                 self.reply_waits.append(max(0, int(now - int(sent_at))))
