@@ -216,6 +216,8 @@ def cmd_bot(args: argparse.Namespace) -> int:
     def read_and_answer(wait: int) -> int:
         try:
             updates = get_updates(token, state.offset, wait=wait)
+            if bot.queued_at_start is None:
+                bot.queued_at_start = len(updates)  # requests that waited for this run to start
             bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
         except TelegramError as exc:
             bot.stats["failure:telegram_read"] += 1
@@ -261,13 +263,20 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
     for key, count in sorted(bot.stats.items()):
         group, _, name = key.partition(":")
         groups.setdefault(group, {})[name] = count
-    subs = bot.state.subs.values()
+    # Active = reachable on the current bot. After a bot switch, people who haven't pressed Start in the
+    # new bot yet are "waiting" until they write to it or it delivers a message to them.
+    subs = [s for s in bot.state.subs.values() if s.bot_id == bot.state.bot_id]
+    waiting = len(bot.state.subs) - len(subs)
     by_queue, by_lead = Counter(f"{s.queue}.{s.subqueue}" for s in subs), Counter(str(s.lead_minutes) for s in subs)
+    waits = sorted(bot.reply_waits)
     return {
         "ts": datetime.now(KYIV).isoformat(timespec="seconds"),
         "bot": me.get("username", ""),
         "seconds": round(seconds, 1),
-        "subscribers": len(bot.state.subs),
+        "subscribers": len(subs),
+        "subscribers_waiting": waiting,
+        "queued_at_start": bot.queued_at_start,
+        "reply_waits": waits[-200:],
         "quizzes": len(bot.state.sessions),
         "address_problems": sum(1 for s in subs if s.problem),
         "by_queue": dict(sorted(by_queue.items())),
