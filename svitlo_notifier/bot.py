@@ -260,6 +260,8 @@ class Bot:
         self.schedule_events: list[dict] = []  # {"queue", "day", "kind": published|changed}
         self.reply_waits: list[int] = []  # seconds each answered message waited for this run (SLA)
         self.queued_at_start: int | None = None  # messages already waiting when the run started
+        self.queued_by_kind: Counter[str] = Counter()  # the same, by request type (/start, button, ...)
+        self.waits_by_kind: dict[str, list[int]] = {}  # reply_waits split by request type
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -527,6 +529,12 @@ class Bot:
         if sub is not None and self.state.bot_id is not None:
             sub.bot_id = self.state.bot_id
 
+    def note_queue(self, updates: list[dict]) -> None:
+        """Record what was already waiting when the run started (first read of the run only)."""
+        if self.queued_at_start is None:
+            self.queued_at_start = len(updates)
+            self.queued_by_kind.update(self._request_kind(u) for u in updates)
+
     def process_updates(self, updates: list[dict], answer: Callable[[str], None] = lambda _id: None,
                         now: float | None = None) -> None:
         now = time.time() if now is None else now
@@ -538,6 +546,7 @@ class Bot:
             sent_at = (update.get("message") or {}).get("date")
             if sent_at:  # how long the message waited for a run to pick it up (button taps carry no time)
                 self.reply_waits.append(max(0, int(now - int(sent_at))))
+                self.waits_by_kind.setdefault(self._request_kind(update), []).append(self.reply_waits[-1])
         if updates:
             self.state.offset = max(int(u["update_id"]) for u in updates) + 1
         for update in updates:

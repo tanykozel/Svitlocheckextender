@@ -95,6 +95,17 @@ class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
         self.assertEqual((record["subscribers"], record["subscribers_waiting"]), (1, 1))
         self.assertEqual(record["reply_waits"], [90], "the message waited 90 s for a run")
 
+    def test_waiting_requests_are_counted_by_type(self):
+        msg = lambda uid, text, date: {"update_id": uid, "message": {"chat": {"id": 1}, "text": text, "date": date}}
+        updates = [msg(1, "/start", 1000), msg(2, "/status", 1030), msg(3, "/status", 1060)]
+        self.bot.note_queue(updates)
+        self.bot.note_queue([msg(4, "/help", 1100)])  # later reads in the same run do not count as "waiting"
+        self.bot.process_updates(updates, now=1090)
+        record = metrics_record(self.bot, {}, 3, 0)
+        self.assertEqual(record["queued_at_start"], 3)
+        self.assertEqual(record["queued_by_kind"], {"/start": 1, "/status": 2})
+        self.assertEqual(record["waits_by_kind"], {"/start": [90], "/status": [30, 60]})
+
     def test_a_delivered_alert_also_counts_as_reachable(self):
         self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))
         self.assertEqual({s.bot_id for s in self.state.subs.values()}, {2})
@@ -103,7 +114,7 @@ class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
         msg = lambda uid, chat, text: {"update_id": uid, "message": {"chat": {"id": chat}, "text": text, "date": 1}}
         self.bot.process_updates([msg(1, 1, "/status"), msg(2, 50, "/help"), msg(3, 51, "/start")], now=2)
         record = metrics_record(self.bot, {}, 3, 0)
-        self.assertEqual(record["started"], 3, "three people opened the new bot")
+        self.assertEqual(record["started"], 4, "three wrote to the new bot, and subscriber 2 started it earlier")
         self.assertEqual(record["started_no_address"], 2, "50 and 51 have not chosen an address yet")
         self.assertTrue(all(k.startswith("chat#") for k in self.state.seen), "stored as keyed tags, not chat ids")
         self.assertFalse({"1", "50", "51"} & set(self.state.seen))
