@@ -216,8 +216,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
     def read_and_answer(wait: int) -> int:
         try:
             updates = get_updates(token, state.offset, wait=wait)
-            if bot.queued_at_start is None:
-                bot.queued_at_start = len(updates)  # requests that waited for this run to start
+            bot.note_queue(updates)  # requests that waited for this run to start
             bot.process_updates(updates, answer=lambda callback_id: answer_callback(token, callback_id))
         except TelegramError as exc:
             bot.stats["failure:telegram_read"] += 1
@@ -276,9 +275,12 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
         "subscribers": len(subs),
         "subscribers_waiting": waiting,
         # Funnel: opened the bot (any message) -> chose an address. Counted with keyed tags, not chat ids.
-        "started": len(bot.state.seen),
+        # Everyone with an address has started the bot, even if they haven't written since "seen" began.
+        "started": len(set(bot.state.seen) | {chat_tag(c) for c in bot.state.subs}),
         "started_no_address": len(set(bot.state.seen) - {chat_tag(c) for c in bot.state.subs}),
         "queued_at_start": bot.queued_at_start,
+        "queued_by_kind": dict(sorted(bot.queued_by_kind.items())),
+        "waits_by_kind": {k: sorted(v)[-50:] for k, v in sorted(bot.waits_by_kind.items())},
         "reply_waits": waits[-200:],
         "quizzes": len(bot.state.sessions),
         "address_problems": sum(1 for s in subs if s.problem),

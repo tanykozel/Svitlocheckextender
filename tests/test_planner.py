@@ -85,6 +85,17 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan(TODAY, at(13, 0), state, quick)[0], [])  # too long ago
         self.assertEqual(plan(TODAY, at(12, 20), State(), quick)[0], [])  # brand-new subscriber
 
+    def test_newer_alert_replaces_the_late_one(self):
+        # 18:00 possible outage with a 30-min lead: at 17:45 that alert is due, so the missed
+        # 17:30-ish news is not sent as an apology. Same if the newer alert already went out.
+        quick = Settings(lead=timedelta(minutes=30), notify_changes=False, catch_up=timedelta(hours=6))
+        _, state = plan(TODAY, at(7, 50), State(), quick)
+        messages, state = plan(TODAY, at(17, 45), state, quick)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("о 18:00", messages[0])
+        self.assertNotIn("запізненням", messages[0])
+        self.assertEqual(plan(TODAY, at(18, 10), state, quick)[0], [])
+
     def test_power_back_alert(self):
         messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
         self.assertEqual(len(messages), 1)
