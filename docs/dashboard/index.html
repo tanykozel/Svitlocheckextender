@@ -91,8 +91,12 @@ a { color: var(--series-1); }
     <h2>1. Service levels (SLA)</h2>
     <p class="note" id="sla-note">Two promises, same target: 95%. <b>Alerts</b>: sent at least 15 min before the change (spec §6); a late alert (sent with an apology) or a missed one counts as a miss. <b>Replies</b>: answered within 5 min.</p>
     <div class="tiles" id="sla-tiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Service levels by day</h3><p class="note">% on target per Kyiv day · dashed line = 95% target</p>
-      <div class="chart"><canvas id="c-sla"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-sla"></div></details></div>
+    <div class="grid2">
+      <div class="card"><h3>Service levels by day</h3><p class="note">% on target per Kyiv day · dashed line = 95% target</p>
+        <div class="chart"><canvas id="c-sla"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-sla"></div></details></div>
+      <div class="card"><h3>Waiting for a reply, by type</h3><p class="note" id="wait-note">Requests waiting for the bot, by type</p>
+        <div class="chart"><canvas id="c-wait"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-wait"></div></details></div>
+    </div>
   </section>
 
   <section>
@@ -111,11 +115,9 @@ a { color: var(--series-1); }
     <h2>3. How the system works</h2>
     <p class="note">One run = one tick of the «Outage alerts» workflow (planned every 10 min). A red run or a failure type below links to what to fix.</p>
     <div class="tiles" id="health-tiles"></div>
-    <div class="grid2">
-      <div class="card"><h3>Requests by type</h3><p class="note">What people sent the bot in the selected range</p>
+    <div>
+      <div class="card" style="margin-top:12px"><h3>Requests by type</h3><p class="note">What people sent the bot in the selected range</p>
         <div class="chart"><canvas id="c-req"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-req"></div></details></div>
-      <div class="card"><h3>Waiting for a reply, by type</h3><p class="note" id="wait-note">Messages already waiting when a run started, in the selected range</p>
-        <div class="chart"><canvas id="c-wait"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-wait"></div></details></div>
     </div>
     <div class="card" style="margin-top:12px"><h3>Minutes between runs</h3><p class="note">Above 10 means GitHub started the bot late (risk R4). Dashed vertical line = new version deployed.</p>
       <div class="chart"><canvas id="c-gap"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-gap"></div></details></div>
@@ -368,22 +370,27 @@ function renderHealth() {
 }
 
 function renderWaiting(ranged) {
-  // messages found waiting at the start of each run, by type; waits per type come from waits_by_kind
+  // The bot reads Telegram only during a run, so "waiting now" is known as of the latest run's start.
   const name = k => REQUEST_NAMES[k] || k;
-  const count = {}, waits = {};
+  const add = (into, obj) => Object.entries(obj || {}).forEach(([k, v]) => into[name(k)] = (into[name(k)] || 0) + v);
+  const lastRun = history.filter(r => r.queued_by_kind).pop();
+  const latest = {}, total = {}, waits = {};
+  add(latest, lastRun?.queued_by_kind);
   ranged.forEach(r => {
-    Object.entries(r.queued_by_kind || {}).forEach(([k, v]) => count[name(k)] = (count[name(k)] || 0) + v);
+    add(total, r.queued_by_kind);
     Object.entries(r.waits_by_kind || {}).forEach(([k, v]) => (waits[name(k)] = waits[name(k)] || []).push(...v));
   });
-  const rows = Object.entries(count).sort((a, b) => b[1] - a[1]);
-  chart("c-wait", "bar", rows.map(([k]) => k), [{ label: "Waiting at run start", data: rows.map(([, v]) => v), backgroundColor: css("--series-2") }],
-    { horizontal: true, empty: ranged.some(r => r.queued_by_kind) ? "Nothing was waiting in this range" : "Collected from the next bot run" });
-  const lastRun = ranged.filter(r => r.queued_by_kind).pop();
-  document.getElementById("wait-note").textContent = "Messages already waiting when a run started, in the selected range" +
-    (lastRun ? ` · last run (${fmtShort(lastRun.date)}): ${sum(lastRun.queued_by_kind)} waiting` : "");
-  document.getElementById("t-wait").innerHTML = table(["Type", "Waiting", "Median wait", "Longest wait"], rows.map(([k, v]) => {
+  const types = Object.keys(total).sort((a, b) => total[b] - total[a]);
+  chart("c-wait", "bar", types, [
+    { label: "At the latest run", data: types.map(k => latest[k] || 0), backgroundColor: css("--series-2") },
+    { label: "Total in the selected range", data: types.map(k => total[k]), backgroundColor: css("--series-1") },
+  ], { horizontal: true, empty: lastRun ? "Nothing was waiting in this range" : "Collected from the next bot run" });
+  document.getElementById("wait-note").textContent = lastRun
+    ? `${sum(lastRun.queued_by_kind)} waiting when the latest run started (${fmtShort(lastRun.date)}) · between runs nobody answers`
+    : "Requests waiting for the bot, by type · collected from the next bot run";
+  document.getElementById("t-wait").innerHTML = table(["Type", "At the latest run", "Total in range", "Median wait", "Longest wait"], types.map(k => {
     const w = (waits[k] || []).sort((a, b) => a - b);
-    return [esc(k), v, w.length ? fmtWait(w[Math.floor(w.length / 2)]) : "–", w.length ? fmtWait(w[w.length - 1]) : "–"];
+    return [esc(k), latest[k] || 0, total[k], w.length ? fmtWait(w[Math.floor(w.length / 2)]) : "–", w.length ? fmtWait(w[w.length - 1]) : "–"];
   })) + "<p>Button taps carry no time, so they have no wait.</p>";
 }
 
