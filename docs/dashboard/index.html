@@ -88,15 +88,11 @@ a { color: var(--series-1); }
   </div>
 
   <section>
-    <h2>1. Alerts on time</h2>
-    <p class="note">Success metric (spec §6): at least 95% of schedule changes are alerted at least 15 minutes ahead. A late or missed alert counts as not on time.</p>
-    <div class="tiles" id="ontime-tiles"></div>
-    <div class="grid2">
-      <div class="card"><h3>Alerts by day</h3><p class="note">How early each alert went out (Kyiv days)</p>
-        <div class="chart"><canvas id="c-ontime"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-ontime"></div></details></div>
-      <div class="card"><h3>By chosen warning time</h3><p class="note">Subscribers pick 15, 30 or 60 min in /setting</p>
-        <div class="table-wrap" id="t-ontime-lead"></div><p class="note" id="ontime-why"></p></div>
-    </div>
+    <h2>1. Service levels (SLA)</h2>
+    <p class="note" id="sla-note">Two promises, same target: 95%. <b>Alerts</b>: sent at least 15 min before the change (spec §6); a late alert (sent with an apology) or a missed one counts as a miss. <b>Replies</b>: answered within 5 min.</p>
+    <div class="tiles" id="sla-tiles"></div>
+    <div class="card" style="margin-top:12px"><h3>Service levels by day</h3><p class="note">% on target per Kyiv day · dashed line = 95% target</p>
+      <div class="chart"><canvas id="c-sla"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-sla"></div></details></div>
   </section>
 
   <section>
@@ -115,11 +111,6 @@ a { color: var(--series-1); }
     <h2>3. How the system works</h2>
     <p class="note">One run = one tick of the «Outage alerts» workflow (planned every 10 min). A red run or a failure type below links to what to fix.</p>
     <div class="tiles" id="health-tiles"></div>
-    <h3 style="margin:20px 0 0;font-size:15px">Reply time (SLA)</h3>
-    <p class="note" id="sla-note">How long a message waited until the bot answered it. Between runs nobody answers, so this is the cost of running on a schedule.</p>
-    <div class="tiles" id="sla-tiles"></div>
-    <div class="card" style="margin-top:12px"><h3>Longest wait per run</h3><p class="note">Minutes the oldest message waited · dashed line = SLA target · button taps carry no time and are not counted</p>
-      <div class="chart"><canvas id="c-sla"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-sla"></div></details></div>
     <div class="grid2">
       <div class="card"><h3>Requests by type</h3><p class="note">What people sent the bot in the selected range</p>
         <div class="chart"><canvas id="c-req"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-req"></div></details></div>
@@ -291,22 +282,17 @@ function renderSubscribers() {
   const okRuns = history.filter(r => typeof r.subscribers === "number");
   const last = okRuns[okRuns.length - 1];
   const ranged = inRange(history);
-  // Change = stock at the end minus stock at the start of the range. Flows (new / left) explain part of it;
-  // the rest is people reconnecting to the current bot after a bot switch (they were never "new").
   const joined = ranged.reduce((a, r) => a + (r.outcomes?.subscribed || 0), 0);
   const left = ranged.reduce((a, r) => a + (r.outcomes?.unsubscribed || 0) + (r.failures?.chat_gone || 0), 0);
-  const rangedOk = ranged.filter(r => typeof r.subscribers === "number");
-  const before = okRuns.filter(r => Date.now() - r.date > rangeHours * 3600e3).pop() || rangedOk[0];
-  const change = last && before ? last.subscribers - before.subscribers : null;
-  const other = change === null ? 0 : change - (joined - left);
-  const changeNote = [`${joined} new`, `${left} left`, ...(other ? [`${other > 0 ? "+" : ""}${other} reconnected after the bot switch`] : [])].join(" · ");
+  const blocked = ranged.reduce((a, r) => a + (r.failures?.chat_gone || 0), 0);
   const tiles = [
     tile("Subscribed (address chosen)", last ? last.subscribers : "–", !last ? "waiting for the first run"
       : last.subscribers_waiting ? `on ${last.bot ? "@" + last.bot : "the current bot"} · +${last.subscribers_waiting} from the old bot haven't pressed Start yet`
       : `on ${last.bot ? "@" + last.bot : "the current bot"} · as of ${fmtShort(last.date)}`),
     tile("Started the bot, no address yet", last && typeof last.started_no_address === "number" ? last.started_no_address : "–",
       last && typeof last.started === "number" ? `${last.started} opened the bot · ${last.started ? Math.round(100 * (last.started - last.started_no_address) / last.started) : 0}% chose an address` : "counted from the next run"),
-    tile("Change in selected range", change === null ? "–" : (change > 0 ? "+" : "") + change, change === null ? "needs a run in the range" : changeNote),
+    tile("Joined", joined, "chose an address · in the selected range"),
+    tile("Left", left, `${left - blocked} pressed /stop · ${blocked} blocked the bot`),
   ];
   document.getElementById("sub-tiles").innerHTML = tiles.join("");
 
@@ -377,7 +363,6 @@ function renderHealth() {
   if (longest > 30) failRows.push([`<span class="status"><span class="dot" style="background:var(--warning)"></span>! GitHub started the bot late</span>`, `${Math.round(longest)} min`,
     "GitHub's scheduler is best-effort, so alerts can come late. Fix: an external trigger (cron-job.org, free) or moving to Cloudflare (v0.4)."]);
   document.getElementById("t-fail").innerHTML = failRows.length ? `<table><thead><tr><th>What</th><th class="num">Count</th><th>What to do</th></tr></thead><tbody>${failRows.map(r => `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td>${r[2]}</td></tr>`).join("")}</tbody></table>` : `<div class="empty">✓ No failures in this range</div>`;
-  renderSla(ranged);
   document.getElementById("t-runs").innerHTML = failedRuns.length ? table(["When", "Trigger", "Log"], failedRuns.slice().reverse().slice(0, 20).map(r => [fmtShort(r.date), esc(r.event || ""), r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Open log</a>` : ""]), 9)
     : `<div class="empty">✓ No failed runs in this range</div>`;
 }
@@ -404,33 +389,6 @@ function renderWaiting(ranged) {
 
 const SLA_MIN = Number(new URLSearchParams(location.search).get("sla")) || 5;  // target: answered within 5 min
 const fmtWait = sec => sec < 60 ? `${Math.round(sec)} s` : hm(sec / 60);
-function renderSla(ranged) {
-  const pct = (a, p) => a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : null;
-  const waits = ranged.flatMap(r => r.reply_waits || []).sort((a, b) => a - b);
-  const within = waits.filter(w => w <= SLA_MIN * 60).length;
-  const share = waits.length ? within / waits.length : null;
-  const queued = ranged.map(r => r.queued_at_start).filter(n => typeof n === "number");
-  const status = share === null ? null : share >= 0.95 ? "good" : share >= 0.8 ? "warning" : "critical";
-  const decision = share === null ? "Collected from the next bot run"
-    : share >= 0.95 ? "On target: the schedule is good enough"
-    : "Below target: consider an always-on platform (v0.4, Cloudflare Workers, ~1 s replies)";
-  document.getElementById("sla-tiles").innerHTML = [
-    tile(`Answered within ${SLA_MIN} min`, share === null ? "–" : `${Math.round(100 * share)}%`, share === null ? "no timed messages in this range" : `${within} of ${waits.length} messages · target 95%`, status),
-    tile("Median wait", waits.length ? fmtWait(pct(waits, 0.5)) : "–", "half of the messages waited less"),
-    tile("95% waited less than", waits.length ? fmtWait(pct(waits, 0.95)) : "–", "the slow tail (p95)"),
-    tile("Longest wait", waits.length ? fmtWait(waits[waits.length - 1]) : "–", "worst case in the range"),
-    tile("Waiting at run start", queued.length ? Math.max(...queued) : "–", queued.length ? `most messages queued for one run · ${queued.reduce((a, b) => a + b, 0)} in total` : "queue length when a run began"),
-  ].join("");
-  document.getElementById("sla-note").textContent = `How long a message waited until the bot answered it. Between runs nobody answers, so this is the cost of running on a schedule. ${decision}.`;
-  const runs = ranged.filter(r => (r.reply_waits || []).length);
-  chart("c-sla", "line", runs.map(r => fmtShort(r.date)), [
-    { label: "Longest wait (min)", data: runs.map(r => Math.round(Math.max(...r.reply_waits) / 6) / 10), borderColor: css("--series-1"), backgroundColor: css("--series-1") },
-    { label: `SLA target (${SLA_MIN} min)`, data: runs.map(() => SLA_MIN), borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [4, 4], pointRadius: 0, borderWidth: 1 },
-  ], { empty: "No timed messages in this range yet", marks: marksFor(runs) });
-  document.getElementById("t-sla").innerHTML = table(["Run", "Messages", "Longest wait", "Waiting at start"],
-    runs.slice().reverse().slice(0, 48).map(r => [fmtShort(r.date), r.reply_waits.length, fmtWait(Math.max(...r.reply_waits)), r.queued_at_start ?? "–"]));
-}
-
 function weekStart(day) { const d = new Date(day + "T12:00:00Z"); const w = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - w); return d.toISOString().slice(0, 10); }
 
 function renderSchedule() {
@@ -563,60 +521,53 @@ function renderDeploys() {
     : `<div class="empty">Versions are recorded from the next bot run</div>`;
 }
 
-const ON_TIME_MIN = 15;  // spec §6
-const NOTICE_BANDS = [
-  ["On time (15+ min)", "good", n => n >= ON_TIME_MIN],
-  ["Short notice (under 15 min)", "warning", n => n >= 0 && n < ON_TIME_MIN],
-  ["Late (after the change)", "serious", n => n < 0],
-];
-function renderOnTime() {
-  const ranged = inRange(history);
-  const notices = ranged.flatMap(r => (r.alert_notices || []).map(([n]) => n));
-  const missed = ranged.reduce((a, r) => a + (r.outcomes?.alert_missed || 0), 0);
-  const total = notices.length + missed;
-  const onTime = notices.filter(n => n >= ON_TIME_MIN).length;
-  const share = total ? onTime / total : null;
-  const status = share === null ? null : share >= 0.95 ? "good" : share >= 0.8 ? "warning" : "critical";
+const ON_TIME_MIN = 15;  // spec §6: an alert at least 15 min before the change
+const SLA_TARGET = 0.95;
+// One day (or range) of service: alerts by notice (< 0 = late, sent with an apology), missed alerts, reply waits.
+function service(runs) {
+  const notices = runs.flatMap(r => (r.alert_notices || []).map(([n]) => n));
+  const missed = runs.reduce((a, r) => a + (r.outcomes?.alert_missed || 0), 0);
+  const waits = runs.flatMap(r => r.reply_waits || []);
+  const alerts = notices.length + missed, onTime = notices.filter(n => n >= ON_TIME_MIN).length;
+  const replies = waits.length, fast = waits.filter(w => w <= SLA_MIN * 60).length;
+  return { alerts, onTime, late: notices.filter(n => n < 0).length, missed, replies, fast,
+           alertShare: alerts ? onTime / alerts : null, replyShare: replies ? fast / replies : null,
+           longest: replies ? Math.max(...waits) : null };
+}
+const slaStatus = x => x === null ? null : x >= SLA_TARGET ? "good" : x >= 0.8 ? "warning" : "critical";
+const pctText = x => x === null ? "–" : `${Math.round(100 * x)}%`;
+function renderService() {
+  const sv = service(inRange(history));
   const collecting = !history.some(r => r.alert_notices);
-  const sorted = notices.slice().sort((a, b) => a - b);
-  document.getElementById("ontime-tiles").innerHTML = [
-    tile("On time", share === null ? "–" : `${Math.round(100 * share)}%`, share === null ? (collecting ? "collected from the next bot run" : "no alerts in this range") : `${onTime} of ${total} changes · target 95%`, status),
-    tile("Short notice", notices.filter(n => n >= 0 && n < ON_TIME_MIN).length, "sent, but less than 15 min ahead"),
-    tile("Late or missed", `${notices.filter(n => n < 0).length} / ${missed}`, "late = sent after the change · missed = never sent", notices.some(n => n < 0) || missed ? "serious" : total ? "good" : null),
-    tile("Median notice", sorted.length ? `${sorted[Math.floor(sorted.length / 2)]} min` : "–", "how early a typical alert arrived"),
+  document.getElementById("sla-tiles").innerHTML = [
+    tile("Alerts on time", pctText(sv.alertShare), sv.alertShare === null ? (collecting ? "collected from the next bot run" : "no changes in this range")
+      : `${sv.onTime} of ${sv.alerts} changes alerted 15+ min ahead · target 95%`, slaStatus(sv.alertShare)),
+    tile("Late or missed alerts", sv.alerts ? `${sv.late + sv.missed}` : "–", `${sv.late} late (apology sent) · ${sv.missed} missed`,
+      sv.alerts ? (sv.late + sv.missed ? "serious" : "good") : null),
+    tile(`Replies within ${SLA_MIN} min`, pctText(sv.replyShare), sv.replyShare === null ? "no timed messages in this range"
+      : `${sv.fast} of ${sv.replies} messages · target 95%`, slaStatus(sv.replyShare)),
+    tile("Longest reply wait", sv.longest === null ? "–" : fmtWait(sv.longest), "worst case in the range"),
   ].join("");
+  const worst = [sv.alertShare, sv.replyShare].filter(x => x !== null);
+  document.getElementById("sla-note").innerHTML = document.getElementById("sla-note").innerHTML.replace(/ <i>.*<\/i>$/, "") +
+    (worst.length && Math.min(...worst) < SLA_TARGET ? " <i>Below target: the cause is the gaps between GitHub runs; the fix is a reliable trigger (cron-job.org) or v0.4 (Cloudflare).</i>" : "");
 
   const byDay = new Map();
-  history.filter(r => Date.now() - r.date <= Math.max(rangeHours, 168) * 3600e3).forEach(r => {
-    if (!r.alert_notices && !(r.outcomes || {}).alert_missed) return;
-    const d = byDay.get(dayKey(r.date)) || { notices: [], missed: 0 };
-    d.notices.push(...(r.alert_notices || []).map(([n]) => n)); d.missed += r.outcomes?.alert_missed || 0;
-    byDay.set(dayKey(r.date), d);
-  });
-  const days = [...byDay.entries()];
-  const label = k => k.slice(8, 10) + "." + k.slice(5, 7);
-  chart("c-ontime", "bar", days.map(([k]) => label(k)), [
-    ...NOTICE_BANDS.map(([name, color, test]) => ({ label: name, data: days.map(([, d]) => d.notices.filter(test).length), backgroundColor: css("--" + color) })),
-    { label: "Missed", data: days.map(([, d]) => d.missed), backgroundColor: css("--critical") },
-  ], { stacked: true, empty: collecting ? "Collected from the next bot run" : "No alerts in this period" });
-  document.getElementById("t-ontime").innerHTML = table(["Day", "On time", "Short notice", "Late", "Missed", "On time %"],
-    days.slice().reverse().map(([k, d]) => {
-      const t = d.notices.length + d.missed, ok = d.notices.filter(n => n >= ON_TIME_MIN).length;
-      return [label(k), ok, d.notices.length - ok - d.notices.filter(n => n < 0).length, d.notices.filter(n => n < 0).length, d.missed, t ? Math.round(100 * ok / t) + "%" : "–"];
-    }));
-
-  const byLead = {};
-  ranged.forEach(r => (r.alert_notices || []).forEach(([n, lead]) => (byLead[lead] = byLead[lead] || []).push(n)));
-  const leadRows = Object.entries(byLead).sort((a, b) => a[0] - b[0]).map(([lead, ns]) => {
-    const ok = ns.filter(n => n >= ON_TIME_MIN).length, s2 = ns.slice().sort((a, b) => a - b);
-    return [`${lead} min`, ns.length, Math.round(100 * ok / ns.length) + "%", `${s2[Math.floor(s2.length / 2)]} min`];
-  });
-  document.getElementById("t-ontime-lead").innerHTML = table(["Warning time", "Alerts", "On time", "Median notice"], leadRows);
-  document.getElementById("ontime-why").textContent = "The bot sends an alert at the first run inside the chosen warning time. " +
-    "With a 15-min choice and runs 10–50 min apart, most alerts arrive with less than 15 min, so this row shows how much run gaps cost.";
+  history.filter(r => Date.now() - r.date <= Math.max(rangeHours, 168) * 3600e3)
+    .forEach(r => byDay.set(dayKey(r.date), [...(byDay.get(dayKey(r.date)) || []), r]));
+  const days = [...byDay.entries()].map(([k, runs]) => [k.slice(8, 10) + "." + k.slice(5, 7), service(runs)]);
+  const pct = x => x === null ? null : Math.round(100 * x);
+  chart("c-sla", "line", days.map(([d]) => d), [
+    { label: "Alerts on time %", data: days.map(([, v]) => pct(v.alertShare)), borderColor: css("--series-1"), backgroundColor: css("--series-1"), spanGaps: true },
+    { label: `Replies within ${SLA_MIN} min %`, data: days.map(([, v]) => pct(v.replyShare)), borderColor: css("--series-2"), backgroundColor: css("--series-2"), spanGaps: true },
+    { label: "Target 95%", data: days.map(() => 95), borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [4, 4], pointRadius: 0, borderWidth: 1 },
+  ], { empty: "Collected from the next bot run" });
+  document.getElementById("t-sla").innerHTML = table(["Day", "Alerts on time", "Late (apology)", "Missed", `Replies within ${SLA_MIN} min`, "Longest reply wait"],
+    days.slice().reverse().map(([d, v]) => [d, v.alerts ? `${v.onTime} of ${v.alerts} (${pctText(v.alertShare)})` : "–", v.late, v.missed,
+      v.replies ? `${v.fast} of ${v.replies} (${pctText(v.replyShare)})` : "–", v.longest === null ? "–" : fmtWait(v.longest)]));
 }
 
-function renderAll() { renderOnTime(); renderSubscribers(); renderHealth(); renderDeploys(); renderSchedule(); }
+function renderAll() { renderService(); renderSubscribers(); renderHealth(); renderDeploys(); renderSchedule(); }
 
 function wireSeg(id, attr, apply) {
   document.getElementById(id).addEventListener("click", e => {

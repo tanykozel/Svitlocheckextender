@@ -687,7 +687,8 @@ class Bot:
         """How early each new alert went out, and which events passed since the last check with no alert."""
         for key in new_alerts.sent.keys() - sub.alerts.sent.keys():
             notice = (datetime.fromisoformat(new_alerts.sent[key]) - now).total_seconds() / 60
-            self.alert_notices.append([round(notice), sub.lead_minutes])
+            # a late alert (sent with an apology) is always below 0, even when it is under a minute late
+            self.alert_notices.append([min(-1, round(notice)) if notice <= 0 else round(notice), sub.lead_minutes])
         if sub.alerts.checked:  # nothing to compare with on the very first check
             since = datetime.fromisoformat(sub.alerts.checked)
             missed = [e for e in passed_events(raw, since, now, settings) if e.key not in new_alerts.sent]
