@@ -53,7 +53,7 @@ class TelegramSetupTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(sent[0][:2], ("T", "42"))
         self.assertNotIn("::", out, "annotations only on GitHub Actions")
-        self.assertNotIn("42", out.replace("chat#", ""), "chat id is not logged")
+        self.assertNotRegex(out, r"(?<![0-9a-f])42(?![0-9a-f])", "chat id is not logged (tags are random hex)")
 
     def test_missing_token_fails(self):
         code, _ = run({})

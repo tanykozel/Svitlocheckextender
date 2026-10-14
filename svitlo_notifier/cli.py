@@ -275,6 +275,9 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
         "seconds": round(seconds, 1),
         "subscribers": len(subs),
         "subscribers_waiting": waiting,
+        # Funnel: opened the bot (any message) -> chose an address. Counted with keyed tags, not chat ids.
+        "started": len(bot.state.seen),
+        "started_no_address": len(set(bot.state.seen) - {chat_tag(c) for c in bot.state.subs}),
         "queued_at_start": bot.queued_at_start,
         "reply_waits": waits[-200:],
         "quizzes": len(bot.state.sessions),
