@@ -191,6 +191,8 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
         if event.kind == EventKind.POSSIBLE_OFF and not settings.notify_possible:
             continue
         late = now - catch_up < event.at <= now and now < event.until
+        if late and any(e.key in new_state.sent or e.at <= now + settings.lead for e in events[index + 1 :]):
+            continue  # a newer alert is due or already out: send that one, not an apology about the past
         if not (late or now < event.at <= now + settings.lead):
             continue
         if event.key in new_state.sent:
