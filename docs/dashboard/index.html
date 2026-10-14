@@ -88,7 +88,19 @@ a { color: var(--series-1); }
   </div>
 
   <section>
-    <h2>1. Subscribers</h2>
+    <h2>1. Alerts on time</h2>
+    <p class="note">Success metric (spec §6): at least 95% of schedule changes are alerted at least 15 minutes ahead. A late or missed alert counts as not on time.</p>
+    <div class="tiles" id="ontime-tiles"></div>
+    <div class="grid2">
+      <div class="card"><h3>Alerts by day</h3><p class="note">How early each alert went out (Kyiv days)</p>
+        <div class="chart"><canvas id="c-ontime"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-ontime"></div></details></div>
+      <div class="card"><h3>By chosen warning time</h3><p class="note">Subscribers pick 15, 30 or 60 min in /setting</p>
+        <div class="table-wrap" id="t-ontime-lead"></div><p class="note" id="ontime-why"></p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Subscribers</h2>
     <p class="note">Numbers only. Chat ids, names and addresses never leave the encrypted bot state.</p>
     <div class="tiles" id="sub-tiles"></div>
     <div class="grid2">
@@ -100,7 +112,7 @@ a { color: var(--series-1); }
   </section>
 
   <section>
-    <h2>2. How the system works</h2>
+    <h2>3. How the system works</h2>
     <p class="note">One run = one tick of the «Outage alerts» workflow (planned every 10 min). A red run or a failure type below links to what to fix.</p>
     <div class="tiles" id="health-tiles"></div>
     <h3 style="margin:20px 0 0;font-size:15px">Reply time (SLA)</h3>
@@ -123,7 +135,7 @@ a { color: var(--series-1); }
   </section>
 
   <section>
-    <h2>3. Context: how often the schedule changes</h2>
+    <h2>4. Context: how often the schedule changes</h2>
     <p class="note">Люся looks at all 12 queues every ~30 min. «Published» = a day's schedule appeared; «changed» = an already published day was edited.</p>
     <div class="controls"><div class="seg" id="period">
       <button type="button" data-p="day" aria-pressed="true">Per day</button>
@@ -143,7 +155,7 @@ a { color: var(--series-1); }
   </section>
 
   <section>
-    <h2>4. Releases &amp; deploys</h2>
+    <h2>5. Releases &amp; deploys</h2>
     <p class="note">A deploy = the first run of a new code version on <code>main</code> (after a merge). Did it start well, and did it break anything?</p>
     <div class="tiles" id="deploy-tiles"></div>
     <div class="card" style="margin-top:12px"><h3>Deploys</h3><p class="note">Newest first. «Broke something» = a failed run or a crash within 1 hour of the deploy (ZTOE or Telegram outages don't count).</p>
@@ -551,7 +563,60 @@ function renderDeploys() {
     : `<div class="empty">Versions are recorded from the next bot run</div>`;
 }
 
-function renderAll() { renderSubscribers(); renderHealth(); renderDeploys(); renderSchedule(); }
+const ON_TIME_MIN = 15;  // spec §6
+const NOTICE_BANDS = [
+  ["On time (15+ min)", "good", n => n >= ON_TIME_MIN],
+  ["Short notice (under 15 min)", "warning", n => n >= 0 && n < ON_TIME_MIN],
+  ["Late (after the change)", "serious", n => n < 0],
+];
+function renderOnTime() {
+  const ranged = inRange(history);
+  const notices = ranged.flatMap(r => (r.alert_notices || []).map(([n]) => n));
+  const missed = ranged.reduce((a, r) => a + (r.outcomes?.alert_missed || 0), 0);
+  const total = notices.length + missed;
+  const onTime = notices.filter(n => n >= ON_TIME_MIN).length;
+  const share = total ? onTime / total : null;
+  const status = share === null ? null : share >= 0.95 ? "good" : share >= 0.8 ? "warning" : "critical";
+  const collecting = !history.some(r => r.alert_notices);
+  const sorted = notices.slice().sort((a, b) => a - b);
+  document.getElementById("ontime-tiles").innerHTML = [
+    tile("On time", share === null ? "–" : `${Math.round(100 * share)}%`, share === null ? (collecting ? "collected from the next bot run" : "no alerts in this range") : `${onTime} of ${total} changes · target 95%`, status),
+    tile("Short notice", notices.filter(n => n >= 0 && n < ON_TIME_MIN).length, "sent, but less than 15 min ahead"),
+    tile("Late or missed", `${notices.filter(n => n < 0).length} / ${missed}`, "late = sent after the change · missed = never sent", notices.some(n => n < 0) || missed ? "serious" : total ? "good" : null),
+    tile("Median notice", sorted.length ? `${sorted[Math.floor(sorted.length / 2)]} min` : "–", "how early a typical alert arrived"),
+  ].join("");
+
+  const byDay = new Map();
+  history.filter(r => Date.now() - r.date <= Math.max(rangeHours, 168) * 3600e3).forEach(r => {
+    if (!r.alert_notices && !(r.outcomes || {}).alert_missed) return;
+    const d = byDay.get(dayKey(r.date)) || { notices: [], missed: 0 };
+    d.notices.push(...(r.alert_notices || []).map(([n]) => n)); d.missed += r.outcomes?.alert_missed || 0;
+    byDay.set(dayKey(r.date), d);
+  });
+  const days = [...byDay.entries()];
+  const label = k => k.slice(8, 10) + "." + k.slice(5, 7);
+  chart("c-ontime", "bar", days.map(([k]) => label(k)), [
+    ...NOTICE_BANDS.map(([name, color, test]) => ({ label: name, data: days.map(([, d]) => d.notices.filter(test).length), backgroundColor: css("--" + color) })),
+    { label: "Missed", data: days.map(([, d]) => d.missed), backgroundColor: css("--critical") },
+  ], { stacked: true, empty: collecting ? "Collected from the next bot run" : "No alerts in this period" });
+  document.getElementById("t-ontime").innerHTML = table(["Day", "On time", "Short notice", "Late", "Missed", "On time %"],
+    days.slice().reverse().map(([k, d]) => {
+      const t = d.notices.length + d.missed, ok = d.notices.filter(n => n >= ON_TIME_MIN).length;
+      return [label(k), ok, d.notices.length - ok - d.notices.filter(n => n < 0).length, d.notices.filter(n => n < 0).length, d.missed, t ? Math.round(100 * ok / t) + "%" : "–"];
+    }));
+
+  const byLead = {};
+  ranged.forEach(r => (r.alert_notices || []).forEach(([n, lead]) => (byLead[lead] = byLead[lead] || []).push(n)));
+  const leadRows = Object.entries(byLead).sort((a, b) => a[0] - b[0]).map(([lead, ns]) => {
+    const ok = ns.filter(n => n >= ON_TIME_MIN).length, s2 = ns.slice().sort((a, b) => a - b);
+    return [`${lead} min`, ns.length, Math.round(100 * ok / ns.length) + "%", `${s2[Math.floor(s2.length / 2)]} min`];
+  });
+  document.getElementById("t-ontime-lead").innerHTML = table(["Warning time", "Alerts", "On time", "Median notice"], leadRows);
+  document.getElementById("ontime-why").textContent = "The bot sends an alert at the first run inside the chosen warning time. " +
+    "With a 15-min choice and runs 10–50 min apart, most alerts arrive with less than 15 min, so this row shows how much run gaps cost.";
+}
+
+function renderAll() { renderOnTime(); renderSubscribers(); renderHealth(); renderDeploys(); renderSchedule(); }
 
 function wireSeg(id, attr, apply) {
   document.getElementById(id).addEventListener("click", e => {

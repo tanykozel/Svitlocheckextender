@@ -22,13 +22,14 @@ from .schedule import (
 class State:
     sent: dict[str, str] = field(default_factory=dict)  # event key -> event time (ISO)
     days: dict[str, str] = field(default_factory=dict)  # schedule date (ISO) -> fingerprint
+    checked: str = ""  # when alerts were last checked (ISO), to spot events that passed with no alert
 
     @classmethod
     def from_dict(cls, raw: dict) -> "State":
-        return cls(sent=dict(raw.get("sent", {})), days=dict(raw.get("days", {})))
+        return cls(sent=dict(raw.get("sent", {})), days=dict(raw.get("days", {})), checked=str(raw.get("checked", "")))
 
     def to_dict(self) -> dict:
-        return {"sent": self.sent, "days": self.days}
+        return {"sent": self.sent, "days": self.days, "checked": self.checked}
 
 
 @dataclass(frozen=True)
@@ -168,7 +169,7 @@ def by_day(raw: list[dict]) -> dict[date, list[Interval]]:
 def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tuple[list[str], State]:
     """Return (messages to send now, new state). Pure: no I/O, no clock."""
     messages: list[str] = []
-    new_state = State(sent=dict(state.sent), days=dict(state.days))
+    new_state = State(sent=dict(state.sent), days=dict(state.days), checked=now.isoformat())
 
     days = by_day(raw)
 
@@ -210,6 +211,13 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
         k: v for k, v in new_state.days.items() if date.fromisoformat(k) >= horizon.date()
     }
     return messages, new_state
+
+
+def passed_events(raw: list[dict], since: datetime, now: datetime, settings: Settings) -> list[Event]:
+    """Events between two alert checks (since, now]: each should have had an alert by now."""
+    timeline = merge([i for intervals in by_day(raw).values() for i in intervals])
+    return [e for e in transitions(timeline) if since < e.at <= now
+            and (e.kind != EventKind.POSSIBLE_OFF or settings.notify_possible)]
 
 
 _STATUS_UA = {"available": "світло є 💡", "outage": "світла немає 🔴", "probable": "можливе відключення 🟡",

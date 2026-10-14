@@ -16,8 +16,8 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
-from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, plan, schedule_text,
-                      summary)
+from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, passed_events, plan,
+                      schedule_text, summary)
 from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, Status, merge, status_at, transitions
 
@@ -262,6 +262,8 @@ class Bot:
         self.queued_at_start: int | None = None  # messages already waiting when the run started
         self.queued_by_kind: Counter[str] = Counter()  # the same, by request type (/start, button, ...)
         self.waits_by_kind: dict[str, list[int]] = {}  # reply_waits split by request type
+        # Alert timeliness (spec §6): [minutes of notice, chosen warning time] per alert sent; < 0 = late.
+        self.alert_notices: list[list[int]] = []
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -656,7 +658,8 @@ class Bot:
             raw = schedules[key]
             if raw is None:
                 continue
-            messages, new_alerts = plan(raw, now, sub.alerts, Settings(lead=timedelta(minutes=sub.lead_minutes), label=sub.label))
+            settings = Settings(lead=timedelta(minutes=sub.lead_minutes), label=sub.label)
+            messages, new_alerts = plan(raw, now, sub.alerts, settings)
             try:
                 for text in messages:
                     self.send(int(chat), text, None)
@@ -672,11 +675,24 @@ class Bot:
                 self.stats["failure:telegram_send"] += 1
                 print(f"warning: sending to {chat_tag(chat)} failed: {type(exc).__name__}; will retry next run")
                 continue
+            self._note_timeliness(sub, raw, now, settings, new_alerts)
             sub.alerts = new_alerts
         for key, raw in schedules.items():
             if raw is not None:
                 self.track_schedule(key, raw, now)
         return sent
+
+    def _note_timeliness(self, sub: Subscription, raw: list[dict], now: datetime, settings: Settings,
+                         new_alerts: State) -> None:
+        """How early each new alert went out, and which events passed since the last check with no alert."""
+        for key in new_alerts.sent.keys() - sub.alerts.sent.keys():
+            notice = (datetime.fromisoformat(new_alerts.sent[key]) - now).total_seconds() / 60
+            self.alert_notices.append([round(notice), sub.lead_minutes])
+        if sub.alerts.checked:  # nothing to compare with on the very first check
+            since = datetime.fromisoformat(sub.alerts.checked)
+            missed = [e for e in passed_events(raw, since, now, settings) if e.key not in new_alerts.sent]
+            if missed:
+                self.stats["outcome:alert_missed"] += len(missed)
 
     def watch_all_queues(self, now: datetime) -> None:
         """Every ~30 min, look at every queue's schedule so the dashboard can show how often it changes."""
