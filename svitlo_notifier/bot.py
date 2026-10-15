@@ -264,6 +264,17 @@ class Bot:
         self.waits_by_kind: dict[str, list[int]] = {}  # reply_waits split by request type
         # Alert timeliness (spec §6): [minutes of notice, chosen warning time] per alert sent; < 0 = late.
         self.alert_notices: list[list[int]] = []
+        self.alert_early = timedelta(0)  # see Settings.early; the always-on server uses its check interval
+
+    def reset_window(self) -> None:
+        """Start a new dashboard window (the always-on server reports every few minutes)."""
+        self.stats.clear()
+        self.schedule_events = []
+        self.reply_waits = []
+        self.waits_by_kind = {}
+        self.alert_notices = []
+        self.queued_at_start = 0  # with long polling, nothing waits for a run to start
+        self.queued_by_kind = Counter()
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -658,7 +669,7 @@ class Bot:
             raw = schedules[key]
             if raw is None:
                 continue
-            settings = Settings(lead=timedelta(minutes=sub.lead_minutes), label=sub.label)
+            settings = Settings(lead=timedelta(minutes=sub.lead_minutes), early=self.alert_early, label=sub.label)
             messages, new_alerts = plan(raw, now, sub.alerts, settings)
             try:
                 for text in messages:

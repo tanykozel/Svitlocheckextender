@@ -35,6 +35,9 @@ class State:
 @dataclass(frozen=True)
 class Settings:
     lead: timedelta = timedelta(minutes=30)
+    # Send up to this much earlier than the chosen warning time, so the next alert check (every minute on the
+    # server) never makes it arrive with less notice than the subscriber asked for.
+    early: timedelta = timedelta(0)
     notify_possible: bool = True
     notify_changes: bool = True
     label: str = ""  # e.g. "Дім" or "черга 3.1", shown in every message
@@ -192,9 +195,10 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
         if event.kind == EventKind.POSSIBLE_OFF and not settings.notify_possible:
             continue
         late = now - catch_up < event.at <= now and now < event.until
-        if late and any(e.key in new_state.sent or e.at <= now + settings.lead for e in events[index + 1 :]):
+        window = settings.lead + settings.early
+        if late and any(e.key in new_state.sent or e.at <= now + window for e in events[index + 1 :]):
             continue  # a newer alert is due or already out: send that one, not an apology about the past
-        if not (late or now < event.at <= now + settings.lead):
+        if not (late or now < event.at <= now + window):
             continue
         if event.key in new_state.sent:
             continue

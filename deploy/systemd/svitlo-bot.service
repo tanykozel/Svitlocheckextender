@@ -1,0 +1,35 @@
+[Unit]
+Description=Svitlo Lyusia bot (always on)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=svitlo
+Group=svitlo
+EnvironmentFile=/etc/svitlo/bot.env
+Environment=SVITLO_BOT_STATE=/var/lib/svitlo/state/bot.json
+Environment=SVITLO_METRICS_DIR=/var/lib/svitlo/metrics
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+WorkingDirectory=/opt/svitlo
+ExecStart=/opt/svitlo-venv/bin/python -m svitlo_notifier bot --forever
+Restart=always
+RestartSec=10
+TimeoutStopSec=60
+# Hardening: the bot can only write its own data folder and only talk over the network.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/svitlo
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -5,8 +5,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import sys
 import time
+import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -227,6 +229,10 @@ def cmd_bot(args: argparse.Namespace) -> int:
         return len(updates)
 
     moved = sent = 0
+    if args.forever:
+        bot.alert_early = timedelta(seconds=ALERT_EVERY)  # alerts are checked every minute
+    elif os.environ.get("SVITLO_ALERT_EARLY_MINUTES"):
+        bot.alert_early = timedelta(minutes=float(os.environ["SVITLO_ALERT_EARLY_MINUTES"]))
 
     def alerts() -> None:
         nonlocal moved, sent
@@ -236,17 +242,20 @@ def cmd_bot(args: argparse.Namespace) -> int:
         bot.watch_all_queues(now)
         _write_json(path, state.to_dict())
 
+    if args.forever:
+        return _serve(args, bot, me, read_and_answer, alerts)
+
     handled = read_and_answer(0)
     alerts()
     # "Stay awake": keep listening with long polling so replies arrive within a second or two,
     # and keep checking alerts every minute so they go out on time during the session.
     deadline = time.monotonic() + args.stay_minutes * 60
-    next_alerts = time.monotonic() + 60
+    next_alerts = time.monotonic() + ALERT_EVERY
     while time.monotonic() < deadline - 5:
         handled += read_and_answer(int(min(25, max(1, deadline - time.monotonic() - 5))))
         if time.monotonic() >= next_alerts:
             alerts()
-            next_alerts = time.monotonic() + 60
+            next_alerts = time.monotonic() + ALERT_EVERY
     if args.stay_minutes:
         alerts()
     print(f"processed {handled} message(s)")
@@ -254,6 +263,58 @@ def cmd_bot(args: argparse.Namespace) -> int:
     if args.metrics:
         _write_metrics(Path(args.metrics), bot, me, handled, time.monotonic() - started)
     return 0
+
+
+ALERT_EVERY = 60  # seconds between alert checks while the bot stays awake
+
+
+def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts) -> int:
+    """Always-on mode for a server: replies within ~1 s, alerts checked every minute.
+
+    Dashboard numbers are written as one record per window into --metrics-dir; a separate timer
+    publishes them, so a GitHub outage never stops the bot.
+    """
+    stop = []
+    previous = {sig: signal.signal(sig, lambda *_a: stop.append(True)) for sig in (signal.SIGTERM, signal.SIGINT)}
+    window_start = time.monotonic()
+    next_alerts = time.monotonic()
+    handled = windows = 0
+    print(f"serving @{me.get('username')}: replies by long polling, alerts every {ALERT_EVERY} s", flush=True)
+    while not stop:
+        failed_before = bot.stats["failure:telegram_read"]
+        handled += read_and_answer(25)
+        if bot.stats["failure:telegram_read"] > failed_before:
+            time.sleep(5)  # Telegram unreachable (or another copy of the bot is polling): don't spin
+        if time.monotonic() >= next_alerts:
+            try:
+                alerts()
+                _ping(os.environ.get("SVITLO_HEALTHCHECK_URL", ""))
+            except Exception as exc:  # noqa: BLE001 - keep serving; the next check retries
+                bot.stats["failure:run_crashed"] += 1
+                print(f"warning: alert check failed: {type(exc).__name__}: {exc}", flush=True)
+            next_alerts = time.monotonic() + ALERT_EVERY
+        if args.metrics_dir and (stop or time.monotonic() - window_start >= args.metrics_every * 60):
+            folder = Path(args.metrics_dir)
+            folder.mkdir(parents=True, exist_ok=True)
+            windows += 1  # in the name too, so two windows in the same second never overwrite each other
+            _write_metrics(folder / f"run-{int(time.time())}-{windows:06d}.json", bot, me, handled,
+                           time.monotonic() - window_start)
+            bot.reset_window()
+            window_start, handled = time.monotonic(), 0
+    for sig, handler in previous.items():
+        signal.signal(sig, handler)
+    print("stopped", flush=True)
+    return 0
+
+
+def _ping(url: str) -> None:
+    """Tell an uptime monitor (e.g. healthchecks.io) that the bot is alive; never fails the bot."""
+    if not url:
+        return
+    try:
+        urllib.request.urlopen(url, timeout=10).close()
+    except OSError as exc:
+        print(f"warning: health ping failed: {exc}", flush=True)
 
 
 def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
@@ -332,6 +393,11 @@ def build_parser() -> argparse.ArgumentParser:
                      help="keep listening this long for instant replies (for live testing); default 0")
     bot.add_argument("--metrics", default=os.environ.get("SVITLO_METRICS", ""),
                      help="write this run's dashboard numbers (no personal data) to this JSON file")
+    bot.add_argument("--forever", action="store_true", default=os.environ.get("SVITLO_FOREVER") == "true",
+                     help="always-on server mode: never stop, alerts every minute")
+    bot.add_argument("--metrics-dir", default=os.environ.get("SVITLO_METRICS_DIR", ""),
+                     help="with --forever: write one dashboard record per window into this folder")
+    bot.add_argument("--metrics-every", type=float, default=10, help="with --forever: window length in minutes")
     bot.set_defaults(func=cmd_bot)
 
     dash = sub.add_parser("metrics-merge", help="add a bot run's numbers to the dashboard data files")

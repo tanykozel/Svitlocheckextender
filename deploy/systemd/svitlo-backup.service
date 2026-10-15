@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily copy of the encrypted bot state
+
+[Service]
+Type=oneshot
+User=svitlo
+Group=svitlo
+ExecStart=/opt/svitlo/deploy/backup.sh
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/svitlo

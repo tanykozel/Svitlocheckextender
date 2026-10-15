@@ -1,0 +1,35 @@
+name: Export bot state
+
+# One-time move of the subscribers to the always-on server (deploy/README.md).
+# The file stays encrypted with SVITLO_STATE_KEY; the server's import script downloads it and then
+# deletes this export, and it expires after 1 day anyway.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: outage-alerts # never while a bot run is saving the state
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Restore bot state
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .state
+          key: svitlo-state-${{ github.run_id }}
+          restore-keys: svitlo-state-
+      - name: Check it is there and encrypted
+        run: |
+          if [ -e .state/bot.json ]; then
+            echo "::error::The state is not encrypted (SVITLO_STATE_KEY missing?); refusing to export it"; exit 1
+          fi
+          test -s .state/bot.json.enc || { echo "::error::No saved bot state found"; exit 1; }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bot-state
+          path: .state/bot.json.enc
+          retention-days: 1

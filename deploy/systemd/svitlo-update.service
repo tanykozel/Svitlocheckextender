@@ -1,0 +1,8 @@
+[Unit]
+Description=Deploy the latest main of the bot
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/svitlo/deploy/update.sh

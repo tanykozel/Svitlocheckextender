@@ -1,0 +1,16 @@
+[Unit]
+Description=Publish the bot's dashboard numbers to the metrics branch
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=svitlo
+Group=svitlo
+EnvironmentFile=/etc/svitlo/github.env
+ExecStart=/opt/svitlo/deploy/publish-metrics.sh
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/svitlo
