@@ -38,6 +38,9 @@ MENU = [
     ("privacy", "Які дані я зберігаю"),
 ]
 DEFAULT_LEAD = 30
+# Chats clean themselves (owner, 16.10): messages older than this are deleted. Telegram lets a bot delete
+# messages in a private chat only while they are less than 48 hours old, so 46 h leaves a safe margin.
+CLEAN_AFTER = 46 * 3600
 # Every queue is watched for the dashboard's "how often does the schedule change" chart,
 # not only the queues that have subscribers.
 WATCH_QUEUES = [(q, s) for q in range(1, 7) for s in (1, 2)]
@@ -234,6 +237,8 @@ class BotState:
     # Everyone who opened the current bot, as keyed log tags (not chat ids) -> first day seen.
     # Only for the dashboard's "started the bot but chose no address" count.
     seen: dict[str, str] = field(default_factory=dict)
+    # Messages in each chat as [message id, unix time], so the chat can clean itself (CLEAN_AFTER).
+    history: dict[str, list[list[int]]] = field(default_factory=dict)
 
     def switch_bot(self, bot_id: int) -> bool:
         """Adopt a new bot token. Returns True if the bot changed.
@@ -249,13 +254,14 @@ class BotState:
         if changed:
             self.offset, self.keyboards, self.sessions, self.menu_version = None, {}, {}, 0
             self.seen = {}  # "started the bot" counts per bot
+            self.history = {}  # message ids belong to the old bot
         return changed
 
     def to_dict(self) -> dict:
         return {"offset": self.offset, "bot_id": self.bot_id, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions, "keyboards": self.keyboards,
-                "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen}
+                "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen, "history": self.history}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
@@ -264,7 +270,8 @@ class BotState:
                    dict(raw.get("sessions", {})),
                    {k: int(v) for k, v in raw.get("keyboards", {}).items()},
                 {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")),
-                {str(k): str(v) for k, v in raw.get("seen", {}).items()})
+                {str(k): str(v) for k, v in raw.get("seen", {}).items()},
+                {str(k): [[int(m), int(t)] for m, t in v] for k, v in raw.get("history", {}).items()})
 
 
 # --- conversation ---------------------------------------------------------------------
@@ -282,6 +289,7 @@ HELP = (
     "/setting - за скільки хвилин попереджати\n"
     "/stop - відписатися і видалити мої дані про тебе\n"
     "/privacy - які дані я зберігаю\n\n"
+    "Повідомлення, старші за 2 доби, я видаляю сама, щоб чат не засмічувався 🧹\n"
     "Аварійні відключення, на жаль, передбачити не можу.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
@@ -294,16 +302,19 @@ PRIVACY = (
     "черг, щоб помітити, коли Житомиробленерго переносить адресу в іншу чергу; у повідомленнях я його не показую.\n\n"
     "Імені, телефону й геолокації не збираю. Дані зашифровані, зберігаються на сервері в ЄС і нікому "
     "не передаються.\n\n"
+    "Щоб чат не засмічувався, повідомлення, старші за 2 доби, я видаляю сама.\n\n"
     "/stop - відписатися: я видалю все, а резервні копії зникнуть протягом 3 днів."
 )
 
 
 class Bot:
     def __init__(self, directory: Directory, send: Send, state: BotState,
-                 unbutton: Unbutton = lambda _chat, _message: None) -> None:
+                 unbutton: Unbutton = lambda _chat, _message: None,
+                 delete: Callable[[int, int], bool] = lambda _chat, _message: False) -> None:
         self.dir = directory
         self._send = send
         self._unbutton = unbutton
+        self._delete = delete
         self.state = state
         # Aggregate counters for the owner dashboard ("request:/start", "failure:ztoe", ...). No chat ids.
         self.stats: Counter[str] = Counter()
@@ -343,6 +354,33 @@ class Bot:
         message_id = self._send(chat_id, text, buttons)
         if buttons and message_id is not None:
             self.state.keyboards[chat] = int(message_id)
+        if message_id is not None:
+            self._remember(chat, int(message_id), time.time())
+
+    def _remember(self, chat: str, message_id: int, at: float) -> None:
+        self.state.history.setdefault(chat, []).append([message_id, int(at)])
+
+    def clean_chats(self, now: float | None = None) -> int:
+        """Delete messages older than CLEAN_AFTER (both sides), so every chat keeps only the last ~2 days."""
+        now = time.time() if now is None else now
+        deleted = 0
+        for chat, messages in list(self.state.history.items()):
+            keep = []
+            for message_id, at in messages:
+                if now - at < CLEAN_AFTER:
+                    keep.append([message_id, at])
+                    continue
+                if now - at < 48 * 3600 and self._delete(int(chat), message_id):
+                    deleted += 1
+                if self.state.keyboards.get(chat) == message_id:
+                    self.state.keyboards.pop(chat)  # its buttons are gone with it
+            if keep:
+                self.state.history[chat] = keep
+            else:
+                self.state.history.pop(chat)
+        if deleted:
+            self.stats["outcome:messages_cleaned"] += deleted
+        return deleted
 
     def _session(self, chat: str) -> dict:
         return self.state.sessions.setdefault(chat, {})
@@ -371,6 +409,7 @@ class Bot:
             self.send(chat_id, "Добре, більше не турбуватиму 💤 Я видалила твою адресу й налаштування "
                                "(резервні копії зникнуть протягом 3 днів). Захочеш повернути мене - надішли /start.",
                       None)
+            self.state.history.pop(chat, None)  # after the reply, so not even its id is kept
         elif command == "/privacy":
             self.send(chat_id, PRIVACY, None)
         elif command == "/status":
@@ -626,6 +665,8 @@ class Bot:
                 self.mark_reachable(chat_id)  # they wrote to this bot, so it can reach them
                 self.state.seen.setdefault(chat_tag(chat_id), datetime.now(KYIV).date().isoformat())
             sent_at = (update.get("message") or {}).get("date")
+            if chat_id is not None and sent_at and (update.get("message") or {}).get("message_id"):
+                self._remember(str(chat_id), int(update["message"]["message_id"]), int(sent_at))
             if sent_at:  # how long the message waited for a run to pick it up (button taps carry no time)
                 self.reply_waits.append(max(0, int(now - int(sent_at))))
                 self.waits_by_kind.setdefault(self._request_kind(update), []).append(self.reply_waits[-1])

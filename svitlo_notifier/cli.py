@@ -22,8 +22,8 @@ from .planner import Settings, State, plan, summary
 from .schedule import KYIV
 from .secure import StateKeyError, chat_tag, load_json, save_json
 from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
-from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, remove_buttons,
-                       send_message, set_commands)
+from .telegram import (TelegramError, answer_callback, delete_message, get_me, get_updates, recent_chats,
+                       remove_buttons, send_message, set_commands)
 
 
 def _env_int(name: str) -> int | None:
@@ -217,7 +217,8 @@ def cmd_bot(args: argparse.Namespace) -> int:
     # Always-on: schedules come from memory, refreshed in the background, so replies never wait for ZTOE.
     directory = ScheduleCache(GpvClient()) if args.forever else GpvClient()
     bot = Bot(directory, lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
-              unbutton=lambda chat, message: remove_buttons(token, chat, message))
+              unbutton=lambda chat, message: remove_buttons(token, chat, message),
+              delete=lambda chat, message: delete_message(token, chat, message))
 
     def read_and_answer(wait: int) -> int:
         try:
@@ -244,6 +245,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
         moved += bot.refresh_queues(now)
         sent += bot.send_alerts(now, is_gone=_telegram_gone)
         bot.watch_all_queues(now)
+        bot.clean_chats()  # messages older than ~2 days disappear from the chats
         _write_json(path, state.to_dict())
 
     if args.forever:
