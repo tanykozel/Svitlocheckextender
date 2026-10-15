@@ -6,6 +6,7 @@ The bot runs non-stop on a small Linux server instead of short GitHub Actions ru
 |---|---|---|
 | Reply to a message | when the next run starts: 10–50 min | ~1 second |
 | Alerts | when the next run starts, sometimes late | checked every minute, never later than the chosen warning time |
+| ZTOE website | read at every run | read every 10 min in the background (`SVITLO_ZTOE_EVERY_MINUTES` in `/etc/svitlo/bot.env` to change); replies and alerts use the copy in memory |
 | Cost | free | ~€4–5 a month |
 
 What runs on the server:

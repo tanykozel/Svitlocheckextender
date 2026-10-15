@@ -7,6 +7,7 @@ import json
 import os
 import signal
 import sys
+import threading
 import time
 import urllib.request
 from collections import Counter
@@ -14,12 +15,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .api import ApiError, GpvClient
+from .cache import ScheduleCache, start_refresher
 from .metrics import merge_from_files
 from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
 from .secure import StateKeyError, chat_tag, load_json, save_json
-from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
+from .bot import MENU, MENU_VERSION, WATCH_QUEUES, Bot, BotState, Subscription
 from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, remove_buttons,
                        send_message, set_commands)
 
@@ -212,7 +214,9 @@ def cmd_bot(args: argparse.Namespace) -> int:
         except TelegramError as exc:
             print(f"warning: could not set the bot menu: {exc}")
 
-    bot = Bot(GpvClient(), lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
+    # Always-on: schedules come from memory, refreshed in the background, so replies never wait for ZTOE.
+    directory = ScheduleCache(GpvClient()) if args.forever else GpvClient()
+    bot = Bot(directory, lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
               unbutton=lambda chat, message: remove_buttons(token, chat, message))
 
     def read_and_answer(wait: int) -> int:
@@ -271,23 +275,35 @@ ALERT_EVERY = 60  # seconds between alert checks while the bot stays awake
 def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts) -> int:
     """Always-on mode for a server: replies within ~1 s, alerts checked every minute.
 
+    The ZTOE website is read only by a background thread, every --ztoe-every minutes; the replies and the
+    minute-by-minute alert check use the copy in memory, so a person never waits for ZTOE.
     Dashboard numbers are written as one record per window into --metrics-dir; a separate timer
     publishes them, so a GitHub outage never stops the bot.
     """
     stop = []
     previous = {sig: signal.signal(sig, lambda *_a: stop.append(True)) for sig in (signal.SIGTERM, signal.SIGINT)}
+    refresher_stop = threading.Event()
+    cache = bot.dir if isinstance(bot.dir, ScheduleCache) else None
+    if cache is not None:
+        def needed() -> set[tuple[int, int]]:
+            return {(s.queue, s.subqueue) for s in list(bot.state.subs.values())} | set(WATCH_QUEUES)
+        start_refresher(cache, needed, args.ztoe_every * 60, refresher_stop)
     window_start = time.monotonic()
     next_alerts = time.monotonic()
     handled = windows = 0
-    print(f"serving @{me.get('username')}: replies by long polling, alerts every {ALERT_EVERY} s", flush=True)
+    print(f"serving @{me.get('username')}: replies by long polling, alerts every {ALERT_EVERY} s, "
+          f"ZTOE read every {args.ztoe_every:g} min", flush=True)
     while not stop:
         failed_before = bot.stats["failure:telegram_read"]
-        handled += read_and_answer(25)
+        # Never wait past the next alert check, so checks stay one minute apart.
+        handled += read_and_answer(int(min(25, max(1, next_alerts - time.monotonic()))))
         if bot.stats["failure:telegram_read"] > failed_before:
             time.sleep(5)  # Telegram unreachable (or another copy of the bot is polling): don't spin
         if time.monotonic() >= next_alerts:
             try:
                 alerts()
+                if cache is not None and (errors := cache.take_errors()):
+                    bot.stats["failure:ztoe"] += errors  # background reads that failed; the last copy stays in use
                 _ping(os.environ.get("SVITLO_HEALTHCHECK_URL", ""))
             except Exception as exc:  # noqa: BLE001 - keep serving; the next check retries
                 bot.stats["failure:run_crashed"] += 1
@@ -301,6 +317,7 @@ def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts
                            time.monotonic() - window_start)
             bot.reset_window()
             window_start, handled = time.monotonic(), 0
+    refresher_stop.set()
     for sig, handler in previous.items():
         signal.signal(sig, handler)
     print("stopped", flush=True)
@@ -398,6 +415,8 @@ def build_parser() -> argparse.ArgumentParser:
     bot.add_argument("--metrics-dir", default=os.environ.get("SVITLO_METRICS_DIR", ""),
                      help="with --forever: write one dashboard record per window into this folder")
     bot.add_argument("--metrics-every", type=float, default=10, help="with --forever: window length in minutes")
+    bot.add_argument("--ztoe-every", type=float, default=float(os.environ.get("SVITLO_ZTOE_EVERY_MINUTES") or 10),
+                     help="with --forever: read the ZTOE schedules every N minutes in the background (default 10)")
     bot.set_defaults(func=cmd_bot)
 
     dash = sub.add_parser("metrics-merge", help="add a bot run's numbers to the dashboard data files")
