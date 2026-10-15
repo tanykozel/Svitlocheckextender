@@ -625,7 +625,7 @@ class Bot:
                     streets[sub.street_id] = self.dir.addresses(sub.street_id)
                 except ApiError as exc:
                     self.stats["failure:ztoe"] += 1
-                    print(f"warning: addresses for street {sub.street_id} unavailable: {exc}")
+                    print(f"warning: addresses for a subscriber's street unavailable: {exc}")  # no street id in logs
                     streets[sub.street_id] = None
             rows = streets[sub.street_id]
             if rows is None:
