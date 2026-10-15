@@ -107,7 +107,7 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
   and in practice sometimes skips runs for 30+ minutes (risk R4). v0.4 fixes it with an always-on server:
   see [deploy/README.md](deploy/README.md). Setting the repository variable `BOT_HOST=server` stops the GitHub runs.
 - **Cost:** $0. The repository is public, so GitHub Actions minutes are free and unlimited.
-- **Privacy policy for users:** /privacy (in the menu) says what is stored and how to delete it; /stop deletes everything (decision D6 in the spec).
+- **Privacy policy for users:** part of /help (menu «Про Люсю, допомога і дані»; /privacy works too); it says what is stored and how to delete it; /stop deletes everything (decision D6 in the spec).
 - **Privacy & security:** see the review in the spec, section 5a. Subscriber data lives in the Actions cache, **encrypted** with `SVITLO_STATE_KEY` (Fernet, AES + HMAC); only the 3 newest snapshots are kept; log labels are keyed with the secret; dependencies are hash-pinned.
   Chat ids are never printed in the public run logs. With a wrong or missing key the bot stops instead of wiping
   subscriptions. If the bot is off for more than 7 days, GitHub deletes the cache and people press Start again.

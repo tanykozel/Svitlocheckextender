@@ -17,6 +17,15 @@ class PrivacyTests(unittest.TestCase):
         self.state = BotState()
         self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append((chat, text)), self.state)
 
+    def test_help_includes_the_privacy_policy(self):
+        self.bot.process_updates([msg(1, 7, "/help")])
+        help_text = self.sent[-1][1]
+        self.assertIn("🔒 Що я зберігаю", help_text)
+        self.assertIn("🧹", help_text)
+        self.sent.clear()
+        self.bot.process_updates([msg(2, 7, "/privacy")])
+        self.assertEqual(self.sent[-1][1], help_text, "/privacy shows the same text")
+
     def test_privacy_command(self):
         self.bot.process_updates([msg(1, 7, "/privacy")])
         text = self.sent[-1][1]
