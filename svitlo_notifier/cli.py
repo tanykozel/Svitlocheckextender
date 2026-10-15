@@ -272,6 +272,15 @@ def cmd_bot(args: argparse.Namespace) -> int:
 ALERT_EVERY = 60  # seconds between alert checks while the bot stays awake
 
 
+def active_queues(state: BotState) -> set[tuple[int, int]]:
+    """The queues somebody is subscribed to: the only ones read from ZTOE on the server (D5).
+
+    Worked out again every round, so when ZTOE moves an address to another queue (the 6-hourly address
+    re-check), the new queue is read from then on and the old one is dropped unless someone else uses it.
+    """
+    return {(s.queue, s.subqueue) for s in list(state.subs.values())}
+
+
 def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts) -> int:
     """Always-on mode for a server: replies within ~1 s, alerts checked every minute.
 
@@ -286,10 +295,7 @@ def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts
     cache = bot.dir if isinstance(bot.dir, ScheduleCache) else None
     if cache is not None:
         bot.watch_all = False  # D5: only subscribers' queues are read, to keep ZTOE requests minimal
-
-        def needed() -> set[tuple[int, int]]:
-            return {(s.queue, s.subqueue) for s in list(bot.state.subs.values())}
-        start_refresher(cache, needed, args.ztoe_every * 60, refresher_stop)
+        start_refresher(cache, lambda: active_queues(bot.state), args.ztoe_every * 60, refresher_stop)
     window_start = time.monotonic()
     next_alerts = time.monotonic()
     handled = windows = 0
