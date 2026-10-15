@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-time setup of the always-on bot on a fresh Ubuntu 24.04 server (x86_64). Run as root:
+# One-time setup of the always-on bot on a fresh Ubuntu server (24.04 or newer, x86_64). Run as root:
 #   curl -fsSL https://raw.githubusercontent.com/tanykozel/Svitlocheckextender/main/deploy/setup.sh | bash
 # Safe to run again: it only adds what is missing and refreshes the service files.
 set -euo pipefail
@@ -35,7 +35,11 @@ echo "== Service user, code and Python packages"
 id svitlo >/dev/null 2>&1 || useradd --system --home-dir /var/lib/svitlo --shell /usr/sbin/nologin svitlo
 install -d -o svitlo -g svitlo -m 700 /var/lib/svitlo /var/lib/svitlo/state /var/lib/svitlo/metrics \
   /var/lib/svitlo/dash /var/lib/svitlo/backup
-[ -d /opt/svitlo/.git ] || git clone -q "https://github.com/${REPO}.git" /opt/svitlo
+if [ -d /opt/svitlo/.git ]; then  # running setup again: take the latest main
+  git -C /opt/svitlo fetch -q origin main && git -C /opt/svitlo reset -q --hard origin/main
+else
+  git clone -q "https://github.com/${REPO}.git" /opt/svitlo
+fi
 [ -x /opt/svitlo-venv/bin/python ] || python3 -m venv /opt/svitlo-venv
 /opt/svitlo-venv/bin/pip install -q --require-hashes -r /opt/svitlo/requirements-bot.txt
 
