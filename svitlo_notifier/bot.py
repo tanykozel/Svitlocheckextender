@@ -8,6 +8,8 @@ arrive on the next tick rather than instantly.
 
 from __future__ import annotations
 
+import difflib
+import html
 import re
 import time
 from collections import Counter
@@ -75,19 +77,45 @@ def house_numbers(raw: str) -> list[str]:
     return numbers
 
 
+def name_of(option: dict) -> str:
+    """ZTOE sends some names HTML-escaped (СГТ &quot;Ветеран&quot;): show them as people write them."""
+    return html.unescape(str(option.get("name", "")))
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[\w']+", normalize(text))
+
+
 def match(options: list[dict], query: str) -> list[dict]:
-    """Exact name match wins; otherwise every option containing the typed text."""
-    q = normalize(query)
+    """Exact name wins; then names containing the typed text; then names where every typed word starts a
+    word of the name, in any order ("в карпенка" or "карпенка вас" -> "вул. Василя Карпенка")."""
+    q = normalize(html.unescape(query))
     if not q:
         return []
-    exact = [o for o in options if normalize(str(o.get("name", ""))) == q]
-    return exact or [o for o in options if q in normalize(str(o.get("name", "")))]
+    names = [(o, normalize(name_of(o))) for o in options]
+    exact = [o for o, n in names if n == q]
+    if exact:
+        return exact
+    contains = [o for o, n in names if q in n]
+    if contains:
+        return contains
+    typed = _words(q)
+    return [o for o, n in names if typed and all(any(w.startswith(t) for w in _words(n)) for t in typed)]
+
+
+def similar(options: list[dict], query: str, limit: int = 4) -> list[dict]:
+    """Closest names for a typo ("Карпенко" -> "Карпенка"), for "did you mean" buttons."""
+    by_name: dict[str, list[dict]] = {}
+    for o in options:  # "вул. X" and "пров. X" share a name once the prefix is dropped: keep both
+        by_name.setdefault(normalize(name_of(o)), []).append(o)
+    close = difflib.get_close_matches(normalize(html.unescape(query)), list(by_name), n=limit, cutoff=0.75)
+    return [o for n in close for o in by_name[n]][:limit]
 
 
 def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
     rows: Buttons = []
     for i in range(0, len(options), per_row):
-        rows.append([(str(o["name"])[:60], f"{prefix}:{o['id']}") for o in options[i : i + per_row]])
+        rows.append([(name_of(o)[:60], f"{prefix}:{o['id']}") for o in options[i : i + per_row]])
     return rows
 
 
@@ -431,20 +459,21 @@ class Bot:
     def pick_rem_by_text(self, chat_id: int, text: str) -> None:
         """Typed district: "Звягельський", "звягельський район", "Звягельський РЕМ" all work."""
         query = re.sub(r"\s*(район|р-н|рем)\.?\s*$", "", text.strip(), flags=re.IGNORECASE)
-        self._pick(chat_id, match(self.dir.rems(), query), "r", self.rem_chosen, "такий район")
+        rems = self.dir.rems()
+        self._pick(chat_id, match(rems, query), "r", self.rem_chosen, "такий район", rems, query)
 
     def rem_chosen(self, chat_id: int, rem_id: str) -> None:
         session = self.state.sessions[str(chat_id)] = {"step": "city", "rem": rem_id}
         cities = self.dir.cities(rem_id)
         towns = [c for c in cities if not str(c.get("name", "")).startswith("с.")][:MAX_BUTTONS]
-        session["names"] = {str(c["id"]): str(c["name"]) for c in towns}
+        session["names"] = {str(c["id"]): name_of(c) for c in towns}
         self.send(chat_id, "2/4. Напиши назву міста чи села (наприклад: Сусли) або обери зі списку:",
                   as_buttons(towns, "c") or None)
 
     def pick_city_by_text(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
-        found = match(self.dir.cities(session["rem"]), text)
-        self._pick(chat_id, found, "c", self.city_chosen, "такий населений пункт")
+        cities = self.dir.cities(session["rem"])
+        self._pick(chat_id, match(cities, text), "c", self.city_chosen, "такий населений пункт", cities, text)
 
     def city_chosen(self, chat_id: int, city_id: str) -> None:
         session = self._session(str(chat_id))
@@ -454,7 +483,7 @@ class Bot:
         if not streets:
             self.send(chat_id, "Ой, для цього населеного пункту в базі немає вулиць 😕 Спробуй /start ще раз.", None)
             return
-        session["names"] = {str(s["id"]): str(s["name"]) for s in streets}
+        session["names"] = {str(s["id"]): name_of(s) for s in streets}
         if len(streets) <= MAX_BUTTONS:
             self.send(chat_id, f"3/4. {city_name}: обери вулицю:", as_buttons(streets, "s"))
         else:
@@ -462,8 +491,8 @@ class Bot:
 
     def pick_street_by_text(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
-        found = match(self.dir.streets(session["city"]), text)
-        self._pick(chat_id, found, "s", self.street_chosen, "таку вулицю")
+        streets = self.dir.streets(session["city"])
+        self._pick(chat_id, match(streets, text), "s", self.street_chosen, "таку вулицю", streets, text)
 
     def street_chosen(self, chat_id: int, street_id: str) -> None:
         session = self._session(str(chat_id))
@@ -490,17 +519,26 @@ class Bot:
         self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
                   None)
 
-    def _pick(self, chat_id: int, found: list[dict], prefix: str,
-              chosen: Callable[[int, str], None], what: str) -> None:
+    def _pick(self, chat_id: int, found: list[dict], prefix: str, chosen: Callable[[int, str], None], what: str,
+              options: list[dict] | None = None, query: str = "") -> None:
         session = self._session(str(chat_id))
+        if not found and options:
+            close = similar(options, query)  # a typo: offer the closest names as buttons
+            if close:
+                self.stats["outcome:did_you_mean"] += 1
+                session.setdefault("names", {}).update({str(o["id"]): name_of(o) for o in close})
+                self.send(chat_id, f"Не знайшла «{query.strip()}» 🤔 Може, одне з цього?", as_buttons(close, prefix))
+                return
         if len(found) == 1:
-            session.setdefault("names", {})[str(found[0]["id"])] = str(found[0]["name"])
+            session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
             chosen(chat_id, str(found[0]["id"]))
         elif not found:
             self.stats["outcome:not_found"] += 1
-            self.send(chat_id, f"Не знайшла {what} 🤔 Перевір написання і спробуй ще раз.", None)
+            hint = ("\nБагато вулиць перейменовано, а база Житомиробленерго знає лише нові назви. "
+                    "Спробуй нову назву або лише частину слова (наприклад: «Карпенка»)." if prefix == "s" else "")
+            self.send(chat_id, f"Не знайшла {what} 🤔 Перевір написання і спробуй ще раз.{hint}", None)
         elif len(found) <= MAX_BUTTONS:
-            session.setdefault("names", {}).update({str(o["id"]): str(o["name"]) for o in found})
+            session.setdefault("names", {}).update({str(o["id"]): name_of(o) for o in found})
             self.send(chat_id, "Знайшла кілька варіантів - обери свій:", as_buttons(found, prefix))
         else:
             self.send(chat_id, f"Ой, аж {len(found)} варіантів 😅 Напиши трохи точніше.", None)
