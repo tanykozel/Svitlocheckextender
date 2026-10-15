@@ -24,7 +24,7 @@ from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, Status, merge, status_at, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 7  # bump on every MENU change so Telegram's menu is refreshed
+MENU_VERSION = 6  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
@@ -34,7 +34,7 @@ MENU = [
     ("setting", "Коли попереджати"),
     ("change", "Змінити адресу"),
     ("stop", "Відписатися"),
-    ("help", "Про Люсю, допомога і дані"),
+    ("help", "Про Люсю і допомога"),
 ]
 DEFAULT_LEAD = 30
 # Chats clean themselves (owner, 16.10): messages older than this are deleted. Telegram lets a bot delete
@@ -286,12 +286,8 @@ HELP = (
     "/schedule - графік на сьогодні й завтра\n"
     "/status - стан за графіком зараз (без урахування аварійних відключень)\n"
     "/setting - за скільки хвилин попереджати\n"
-    "/stop - відписатися і видалити мої дані про тебе (резервні копії зникнуть протягом 3 днів)\n\n"
-    "🔒 Що я зберігаю: твій Telegram-чат, населений пункт і вулицю, чергу та час попередження. "
-    "Номер будинку - лише якщо на вулиці кілька черг (щоб помітити, коли Житомиробленерго переносить "
-    "адресу в іншу чергу); у повідомленнях я його не показую. Імені, телефону й геолокації не збираю. "
-    "Дані зашифровані, зберігаються на сервері в ЄС і нікому не передаються.\n"
-    "🧹 Повідомлення, старші за 2 доби, я видаляю сама, щоб чат не засмічувався.\n\n"
+    "/stop - відписатися\n\n"
+    "🧹 Повідомлення, старші за 2 доби, я видаляю сама, щоб чат не засмічувався.\n"
     "Аварійні відключення, на жаль, передбачити не можу.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
@@ -402,8 +398,6 @@ class Bot:
                                "(резервні копії зникнуть протягом 3 днів). Захочеш повернути мене - надішли /start.",
                       None)
             self.state.history.pop(chat, None)  # after the reply, so not even its id is kept
-        elif command == "/privacy":  # not in the menu: the privacy policy is part of /help (owner, 16.10)
-            self.send(chat_id, HELP, None)
         elif command == "/status":
             self.status(chat_id)
         elif command == "/help":
@@ -702,7 +696,7 @@ class Bot:
         if text.startswith("/"):
             command = text.split()[0].lower().split("@")[0]
             known = {"/start", "/subscribe", "/change", "/address", "/setting", "/settings", "/schedule", "/test", "/demo",
-                     "/stop", "/status", "/help", "/privacy"}
+                     "/stop", "/status", "/help"}
             return command if command in known else "unknown_command"
         chat = str(message.get("chat", {}).get("id"))
         return "quiz_answer" if self.state.sessions.get(chat, {}).get("step") else "unknown_text"
