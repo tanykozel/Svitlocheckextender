@@ -96,6 +96,14 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn("запізненням", messages[0])
         self.assertEqual(plan(TODAY, at(18, 10), state, quick)[0], [])
 
+    def test_early_window_keeps_the_promised_notice(self):
+        # Checked every minute: with 1 min of slack a 30-min alert arrives 30-31 min ahead, never 29.
+        early = Settings(lead=timedelta(minutes=30), early=timedelta(minutes=1), notify_changes=False)
+        messages, _ = plan(TODAY, at(7, 29), State(), early)
+        self.assertEqual(len(messages), 1)
+        self.assertIn("За ~31 хв, о 08:00", messages[0])
+        self.assertEqual(plan(TODAY, at(7, 28), State(), early)[0], [])
+
     def test_power_back_alert(self):
         messages, _ = plan(TODAY, at(11, 45), State(), self.settings)
         self.assertEqual(len(messages), 1)

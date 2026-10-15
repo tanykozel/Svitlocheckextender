@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Product | Telegram bot, display name «Світло Житомир 💡 Графік відключень»; username **@Svitlo_Lyusia_zt_bot** (live since 13.10, 21:00) |
-| Status | **v0.3 live** (GitHub Actions, public repo). Real-scenario UAT on 2026-10-13. v0.4 (Cloudflare) planned. |
+| Status | **v0.3 live** (GitHub Actions, public repo). Real-scenario UAT on 2026-10-13. v0.4 (always-on server, D4) in progress. |
 | Owner | Tetiana Kozel |
 | How it was built | Product decisions, requirements and testing by the owner; design and code produced with an AI assistant (Claude Code) |
 | Last updated | 2026-10-13 |
@@ -31,7 +31,7 @@ the schedule is published or changed, they will stop checking the app manually a
 | v0.1 MVP | One queue per instance; alerts off / possible off / on; schedule published/changed; ntfy and/or Telegram; queue lookup |
 | v0.2 | Shared bot: friends subscribe themselves through an address quiz |
 | v0.3 (current) | One address per person + change; warning time 15/30/60; outage length and `/schedule`; queue-move detection; most-recent-request-wins; unknown-input reply; typed answers at every step; persona Люся; encryption; bot-switch safety |
-| v0.4 (next) | Move to Cloudflare Workers: instant replies, punctual alerts, durable storage (see section 8) |
+| v0.4 (next) | Always-on server: instant replies, punctual alerts, durable storage (D4, see section 8) |
 
 **Out of scope (now):** mobile app UI; emergency (unscheduled) outage detection; other oblenergos; meter readings
 or payments; several addresses per person (Q2).
@@ -189,15 +189,16 @@ Not held: name, @username, phone, location, message texts.
 |---|---|---|---|
 | R1 | ZTOE endpoints are undocumented and may change | Open | Isolated in `api.py`; contract from SvitloYE (MIT). Ask ZTOE about an official feed. |
 | R2/R3 | Live API reachable from GitHub runners | **Resolved** | Verified 2026-10-13: districts, villages, streets and the live schedule for queue 1.2. |
-| R4 | GitHub's scheduler is best-effort: runs skipped for 30–45+ min | **Open (high)** | Short term: *stay_minutes* sessions and an external trigger (cron-job.org, $0). Long term: v0.4 Cloudflare. |
+| R4 | GitHub's scheduler is best-effort: runs skipped for 30–45+ min | **Being fixed (v0.4)** | Always-on server (D4): replies by long polling, alerts checked every minute. |
 | R5 | Emergency outages are not in the schedule | Limitation | Stated honestly in /help and /status. A home "power sensor" (SvitloBot-style) is a future epic. |
 | R6 | Private repo would exceed free Actions minutes | **Resolved** | Repository made public (no secrets in code or history). |
-| R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Open (low) | Fine while the bot runs; v0.4 moves to durable storage. |
+| R7 | Subscribers live in the Actions cache (evicted after 7 days unused) | Being fixed (v0.4) | On the server: encrypted file on disk + daily encrypted backup kept 3 days. |
 | R8 | Public repo: logs public; fork PRs could read the cache | **Mitigated** | Encryption, no chat ids in logs, approval required for outside PR workflows. |
 | A1 | Slot colours: red = outage, yellow = possible, white/green = power | Partly verified | Live data shows white/red as expected; yellow not yet seen. |
 | D1 | Final username @Svitlo_Lyusia_zt_bot | **Done 13.10** | New bot created; token switched; both subscriptions kept (hotfix v0.3.4 stops "chat not found" from unsubscribing people who haven't pressed Start yet). The old @svitlo_dim_tk_bot becomes the test bot. |
 | D2 | Persona «Світло Люся» with a functional display name | Decided | Section 4a. |
 | D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
+| D4 | v0.4 hosting: own small server (EU VPS, ~€4–5/month) instead of Cloudflare Workers or an external trigger | **Decided 15.10 (owner)** | Same Python code, no rewrite; ~1 s replies; alerts every minute and never later than the chosen warning time (sent up to 1 min early). Trade-off accepted: the owner operates the server (automatic security updates, firewall, uptime check). Guide: deploy/README.md. |
 | Q1 | bezsvitla.com.ua as an extra source? | Open | Third-party aggregator; ZTOE stays primary. |
 | Q2 | Several addresses per person (home + parents)? | Open | Candidate after v0.4. |
 | Q3 | Remove the owner's personal test data from the **old commits** of the public repository (history rewrite + force-push)? | ✅ Decided: yes (14.10) | History rewritten on 14.10. Old releases v0.3.2–v0.3.6 pointed to the old commits, so they were removed and their notes moved to CHANGELOG.md (GitHub does not let a workflow re-create a tag on a commit whose workflow files differ from main). Remaining step (owner): ask GitHub Support to purge cached views of the old commits. |
@@ -206,7 +207,7 @@ Not held: name, @username, phone, location, message texts.
 | When | Item |
 |---|---|
 | Now | Real-scenario UAT on the live schedule (queue 1.2: off 20:00, on 22:00, 2026-10-13); token switch to @Svitlo_Lyusia_zt_bot ✅ done |
-| Next (v0.4) | **Cloudflare Workers**: Telegram webhook (≈1 s replies), cron every minute (punctual alerts), D1/KV storage. $0 on the free plan. |
+| Next (v0.4) | **Always-on server** (D4): ≈1 s replies, alerts every minute, auto-deploy of `main`, encrypted state on disk. Fallback: GitHub Actions (rollback in deploy/README.md). |
 | Later | Send Люся's sticker with each alert · several addresses per person (Q2) · sticker pack publishing · home power sensor epic |
 
 ## 9. Release history (2026-10-13)

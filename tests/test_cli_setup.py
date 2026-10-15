@@ -138,6 +138,53 @@ class StayAwakeTests(unittest.TestCase):
         self.assertGreaterEqual(len(alert_checks), 4, "start + about once a minute + end")
 
 
+class ServeTests(unittest.TestCase):
+    """Always-on server mode (v0.4): never stops by itself, alerts every minute, dashboard windows."""
+
+    def test_serves_until_stopped_and_writes_one_record_per_window(self):
+        import json
+        import signal
+        import tempfile
+        from pathlib import Path
+
+        clock = {"t": 0.0}
+        alert_checks, pings, early = [], [], []
+
+        def fake_updates(*_a, wait=0):
+            clock["t"] += wait  # idle long polling
+            if clock["t"] >= 25 * 60:
+                os.kill(os.getpid(), signal.SIGTERM)  # systemd stops the service
+            return []
+
+        def fake_alerts(bot, *_a, **_k):
+            alert_checks.append(1)
+            early.append(bot.alert_early.total_seconds())
+            if len(alert_checks) == 3:
+                raise RuntimeError("ZTOE glitch")  # one bad check must not stop the bot
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T", "SVITLO_HEALTHCHECK_URL": "https://hc.example/x"},
+                             clear=True), \
+             mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lyusia_zt_bot"}), \
+             mock.patch.object(cli, "get_updates", side_effect=fake_updates), \
+             mock.patch.object(cli.Bot, "send_alerts", autospec=True, side_effect=fake_alerts), \
+             mock.patch.object(cli, "_ping", side_effect=pings.append), \
+             mock.patch.object(cli.time, "monotonic", side_effect=lambda: clock["t"]), \
+             redirect_stdout(io.StringIO()):
+            folder = Path(tmp) / "metrics"
+            code = cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--forever", "--metrics-dir", str(folder)])
+            records = [json.loads(p.read_text()) for p in sorted(folder.glob("run-*.json"))]
+        self.assertEqual(code, 0)
+        self.assertGreaterEqual(len(alert_checks), 20, "about once a minute for 25 minutes")
+        self.assertEqual(set(early), {60.0}, "alerts go out up to one check early, never late")
+        self.assertEqual(len(pings), len(alert_checks) - 1, "health ping after each good check")
+        self.assertEqual(len(records), 3, "two 10-minute windows + the last part at stop")
+        self.assertEqual(sum(r["failures"].get("run_crashed", 0) for r in records), 1)
+        self.assertIs(signal.getsignal(signal.SIGTERM), signal.SIG_DFL, "handlers restored")
+
+
 class BotSwitchTests(unittest.TestCase):
     """Switching to a new bot token (@svitlo_dim_tk_bot -> @Svitlo_Lyusia_zt_bot)."""
 

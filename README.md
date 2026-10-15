@@ -62,9 +62,9 @@ These are the exact texts the code produces:
 There's also a 🟡 "possible outage" alert for yellow slots. Every alert is sent **once**.
 
 ### Good to know
-- **Replies are not instant** (yet). The bot runs in short "ticks" on GitHub Actions, so a reply can take
-  ~10–30 minutes. Telegram keeps your messages until then, and if you tap several times, only your **latest**
-  request is answered. Instant replies are planned for v0.4 (Cloudflare).
+- **Replies:** on the always-on server (v0.4, [deploy/README.md](deploy/README.md)) Люся answers within seconds.
+  While the bot still runs in short "ticks" on GitHub Actions, a reply can take ~10–30 minutes; Telegram keeps
+  your messages until then, and if you tap several times, only your **latest** request is answered.
 - **One address per person.** If ZTOE moves your address to another queue, Люся notices within ~6 hours,
   switches over and tells you.
 
@@ -104,7 +104,8 @@ the change (the run log shows `bot: @username` and "New bot detected"), resets i
 | **Release** | Publishes a GitHub Release (version tag + notes) for the code live on `main`. |
 
 - **Cadence:** schedule check every 10 min; address → queue re-check every 6 h. GitHub's scheduler is "best effort"
-  and in practice sometimes skips runs for 30+ minutes. See risk R4 in the spec and the v0.4 Cloudflare plan.
+  and in practice sometimes skips runs for 30+ minutes (risk R4). v0.4 fixes it with an always-on server:
+  see [deploy/README.md](deploy/README.md). Setting the repository variable `BOT_HOST=server` stops the GitHub runs.
 - **Cost:** $0. The repository is public, so GitHub Actions minutes are free and unlimited.
 - **Privacy & security:** see the review in the spec, section 5a. Subscriber data lives in the Actions cache, **encrypted** with `SVITLO_STATE_KEY` (Fernet, AES + HMAC); only the 3 newest snapshots are kept; log labels are keyed with the secret; dependencies are hash-pinned.
   Chat ids are never printed in the public run logs. With a wrong or missing key the bot stops instead of wiping
