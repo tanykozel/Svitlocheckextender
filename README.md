@@ -180,6 +180,6 @@ python -m unittest discover -s tests -v      # 94 tests
   (check `unit`) must pass, and the owner reviews and merges. Link the user story in the PR (e.g. "US-16").
 - **Releases** are tags on `main` using [Semantic Versioning](https://semver.org): `v0.3.1` = fix or small addition,
   `v0.4.0` = new capability. Publish one with **Actions → Release → Run workflow** (version, title, "what's new";
-  the list of merged PRs is added automatically), or by hand under Releases → Draft a new release. The product view of
-  the history is in the spec, section 9.
+  the list of merged PRs is added automatically), or by hand under Releases → Draft a new release. Versions before
+  v0.3.7 are in [CHANGELOG.md](CHANGELOG.md). The product view of the history is in the spec, section 9.
 - The `metrics` branch is **data only**: the bot rewrites it after every run. Never edit it or open a PR from it.
