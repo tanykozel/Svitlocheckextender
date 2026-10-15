@@ -265,6 +265,9 @@ class Bot:
         # Alert timeliness (spec §6): [minutes of notice, chosen warning time] per alert sent; < 0 = late.
         self.alert_notices: list[list[int]] = []
         self.alert_early = timedelta(0)  # see Settings.early; the always-on server uses its check interval
+        # Look at all 12 queues for the dashboard's Context section. Off on the always-on server
+        # (owner decision D5: as few ZTOE requests as possible); subscribers' queues are still tracked.
+        self.watch_all = True
 
     def reset_window(self) -> None:
         """Start a new dashboard window (the always-on server reports every few minutes)."""
@@ -708,6 +711,8 @@ class Bot:
 
     def watch_all_queues(self, now: datetime) -> None:
         """Every ~30 min, look at every queue's schedule so the dashboard can show how often it changes."""
+        if not self.watch_all:
+            return
         if self.state.watched_at and now - datetime.fromisoformat(self.state.watched_at) < WATCH_EVERY:
             return
         self.state.watched_at = now.isoformat()

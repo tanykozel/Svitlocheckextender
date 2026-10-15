@@ -263,6 +263,25 @@ class QueueChangeTests(unittest.TestCase):
         self.state.subs[str(chat)] = s
         return s
 
+    def test_after_a_move_the_server_reads_the_new_queue_and_drops_the_old(self):
+        from svitlo_notifier.cache import ScheduleCache
+        from svitlo_notifier.cli import active_queues
+        self.bot.dir = cache = ScheduleCache(self.dir)
+        self.sub(1, "179892", "12а")                      # moves 3.1 -> 4.2
+        self.sub(2, "999", "1", queue=(1, 2))             # someone else, not moving
+        self.rows["999"] = [{"id": "9", "name": "1 - побутові споживачі", "cherga": 1, "pidcherga": 2}]
+        self.rows["179892"] = [{"id": "1", "name": "10 - побутові споживачі, 12А - побутові споживачі",
+                                "cherga": 4, "pidcherga": 2}]
+        self.assertEqual(active_queues(self.state), {(3, 1), (1, 2)})
+        self.bot.refresh_queues(self.t0 + timedelta(hours=7))    # the 6-hourly address re-check, via the cache
+        self.assertEqual(active_queues(self.state), {(4, 2), (1, 2)}, "new queue read, old one dropped")
+        self.dir.schedule_calls.clear()
+        self.bot.send_alerts(self.t0 + timedelta(hours=7))
+        self.assertIn((4, 2), self.dir.schedule_calls, "first check after the move reads the new queue at once")
+        self.dir.schedule_calls.clear()
+        self.bot.send_alerts(self.t0 + timedelta(hours=7, minutes=1))
+        self.assertNotIn((4, 2), self.dir.schedule_calls, "then from memory")
+
     def test_queue_moved_is_followed_and_reported_once(self):
         sub = self.sub(1, "179892", "12а")
         self.rows["179892"] = [{"id": "1", "name": "10 - побутові споживачі, 12А - побутові споживачі",

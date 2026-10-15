@@ -204,6 +204,13 @@ class ScheduleChangeTrackingTests(unittest.TestCase):
         bot.watch_all_queues(self.now.replace(minute=31))
         self.assertEqual(len(directory.schedule_calls), 2 * len(WATCH_QUEUES))
 
+    def test_server_does_not_watch_other_queues(self):
+        directory = FakeDirectory()
+        bot = Bot(directory, lambda *_a: None, self.state)
+        bot.watch_all = False  # D5 on the always-on server
+        bot.watch_all_queues(self.now)
+        self.assertEqual(directory.schedule_calls, [], "no extra ZTOE requests")
+
 
 class MergeTests(unittest.TestCase):
     def test_runs_daily_totals_and_events(self):

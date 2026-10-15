@@ -150,7 +150,10 @@ class ServeTests(unittest.TestCase):
         clock = {"t": 0.0}
         alert_checks, pings, early = [], [], []
 
+        polls = []
+
         def fake_updates(*_a, wait=0):
+            polls.append(wait)
             clock["t"] += wait  # idle long polling
             if clock["t"] >= 25 * 60:
                 os.kill(os.getpid(), signal.SIGTERM)  # systemd stops the service
@@ -171,6 +174,7 @@ class ServeTests(unittest.TestCase):
              mock.patch.object(cli, "get_updates", side_effect=fake_updates), \
              mock.patch.object(cli.Bot, "send_alerts", autospec=True, side_effect=fake_alerts), \
              mock.patch.object(cli, "_ping", side_effect=pings.append), \
+             mock.patch.object(cli, "GpvClient", FakeDirectory), \
              mock.patch.object(cli.time, "monotonic", side_effect=lambda: clock["t"]), \
              redirect_stdout(io.StringIO()):
             folder = Path(tmp) / "metrics"
@@ -183,6 +187,36 @@ class ServeTests(unittest.TestCase):
         self.assertEqual(len(records), 3, "two 10-minute windows + the last part at stop")
         self.assertEqual(sum(r["failures"].get("run_crashed", 0) for r in records), 1)
         self.assertIs(signal.getsignal(signal.SIGTERM), signal.SIG_DFL, "handlers restored")
+        self.assertTrue(all(w <= 25 for w in polls), "a poll never waits past the next check")
+
+    def test_serving_reads_schedules_from_memory(self):
+        import tempfile
+        from pathlib import Path
+
+        from svitlo_notifier.cache import ScheduleCache
+        seen = {}
+
+        def fake_updates(*_a, wait=0):
+            os.kill(os.getpid(), __import__("signal").SIGTERM)
+            return []
+
+        def grab(bot, *_a, **_k):
+            seen["dir"] = bot.dir
+            seen["watch_all"] = bot.watch_all
+            return 0
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "T"}, clear=True), \
+             mock.patch.object(cli, "set_commands"), \
+             mock.patch.object(cli, "get_me", return_value={"id": 7, "username": "svitlo_lyusia_zt_bot"}), \
+             mock.patch.object(cli, "get_updates", side_effect=fake_updates), \
+             mock.patch.object(cli.Bot, "send_alerts", autospec=True, side_effect=grab), \
+             mock.patch.object(cli, "GpvClient", FakeDirectory), \
+             redirect_stdout(io.StringIO()) as out:
+            cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--forever", "--ztoe-every", "15"])
+        self.assertIsInstance(seen["dir"], ScheduleCache, "alerts and replies use the copy in memory")
+        self.assertFalse(seen["watch_all"], "server reads only subscribers' queues (D5)")
+        self.assertIn("ZTOE read every 15 min", out.getvalue())
 
 
 class BotSwitchTests(unittest.TestCase):
