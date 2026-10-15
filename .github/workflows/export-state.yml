@@ -1,8 +1,10 @@
 name: Export bot state
 
 # One-time move of the subscribers to the always-on server (deploy/README.md).
-# The file stays encrypted with SVITLO_STATE_KEY; the server's import script downloads it and then
-# deletes this export, and it expires after 1 day anyway.
+# The file stays encrypted the whole way. If the secret SVITLO_STATE_KEY_SERVER is set, the state is
+# re-encrypted with it (for when the original SVITLO_STATE_KEY value is no longer known; the GitHub
+# copy keeps the old key, so a rollback still works). The server's import script downloads the export
+# and then deletes it, and it expires after 1 day anyway.
 on:
   workflow_dispatch:
 
@@ -16,6 +18,10 @@ jobs:
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
       - name: Restore bot state
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -28,6 +34,23 @@ jobs:
             echo "::error::The state is not encrypted (SVITLO_STATE_KEY missing?); refusing to export it"; exit 1
           fi
           test -s .state/bot.json.enc || { echo "::error::No saved bot state found"; exit 1; }
+      - name: Re-encrypt with the server key (if set)
+        env:
+          OLD_KEY: ${{ secrets.SVITLO_STATE_KEY }}
+          NEW_KEY: ${{ secrets.SVITLO_STATE_KEY_SERVER }}
+        run: |
+          if [ -z "$NEW_KEY" ]; then echo "SVITLO_STATE_KEY_SERVER not set: exporting with SVITLO_STATE_KEY"; exit 0; fi
+          pip install --quiet --require-hashes -r requirements-bot.txt
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from svitlo_notifier.secure import load_json, save_json
+          path = Path(".state/bot.json")
+          data = load_json(path, os.environ["OLD_KEY"])  # fails loudly if the old key is wrong
+          save_json(path, data, os.environ["NEW_KEY"])
+          assert load_json(path, os.environ["NEW_KEY"]) == data
+          print(f"re-encrypted {len(data.get('subs', {}))} subscription(s) with the server key")
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: bot-state
