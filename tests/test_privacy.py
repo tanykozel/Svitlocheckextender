@@ -10,20 +10,12 @@ def msg(update_id, chat, text):
 
 
 class PrivacyTests(unittest.TestCase):
-    """Owner decision 16.10: pressing Start after the notice is consent; /stop withdraws it and deletes all."""
+    """Owner decision D6 (16.10): a simple privacy policy (/privacy); /stop deletes everything."""
 
     def setUp(self):
         self.sent = []
         self.state = BotState()
         self.bot = Bot(FakeDirectory(), lambda chat, text, buttons: self.sent.append((chat, text)), self.state)
-
-    def test_start_tells_what_is_stored_before_anything_is_saved(self):
-        self.bot.process_updates([msg(1, 7, "/start")])
-        greeting = self.sent[0][1]
-        self.assertIn("ти погоджуєшся", greeting)
-        self.assertIn("/privacy", greeting)
-        self.assertIn("/stop", greeting)
-        self.assertEqual(self.state.subs, {}, "nothing is stored until an address is chosen")
 
     def test_privacy_command(self):
         self.bot.process_updates([msg(1, 7, "/privacy")])
@@ -42,13 +34,6 @@ class PrivacyTests(unittest.TestCase):
         self.assertNotIn("7", self.state.keyboards)
         self.assertNotIn(chat_tag(7), self.state.seen)
         self.assertIn("видалила", self.sent[-1][1])
-
-    def test_existing_subscribers_are_told_once(self):
-        self.state.subs["7"] = Subscription(1, 2, "с. Сусли, вул. Центральна")
-        self.state.subs["8"] = Subscription(1, 2, "с. Сусли, вул. Центральна", consent_at="2026-10-16")
-        self.assertEqual(self.bot.inform_existing_subscribers(), 1)
-        self.assertEqual([chat for chat, _ in self.sent], [7])
-        self.assertEqual(self.bot.inform_existing_subscribers(), 0, "only once")
 
     def test_old_labels_lose_the_house_number(self):
         self.assertEqual(label_without_house("с. Сусли, вул. Центральна 12А", "12а"), "с. Сусли, вул. Центральна")

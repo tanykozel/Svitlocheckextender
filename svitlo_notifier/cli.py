@@ -232,9 +232,6 @@ def cmd_bot(args: argparse.Namespace) -> int:
         _write_json(path, state.to_dict())
         return len(updates)
 
-    if bot.inform_existing_subscribers():
-        _write_json(path, state.to_dict())
-
     moved = sent = 0
     if args.forever:
         bot.alert_early = timedelta(seconds=ALERT_EVERY)  # alerts are checked every minute

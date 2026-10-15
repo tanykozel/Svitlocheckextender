@@ -194,15 +194,12 @@ class Subscription:
     # The bot this person is known to reach us on (they wrote to it, or it delivered a message to them).
     # After a bot switch, old subscribers count as active only once the new bot reaches them.
     bot_id: int | None = None
-    # When the person agreed (owner decision 16.10: choosing an address after the /start notice is consent;
-    # /stop withdraws it and deletes everything). Date only.
-    consent_at: str = ""
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
                 "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
                 "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict(),
-                "bot_id": self.bot_id, "consent_at": self.consent_at}
+                "bot_id": self.bot_id}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
@@ -211,7 +208,7 @@ class Subscription:
                    State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
                    str(raw.get("street_id", "")), house,
                    str(raw.get("checked_at", "")), str(raw.get("problem", "")),
-                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None, str(raw.get("consent_at", "")))
+                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None)
 
 
 def label_without_house(label: str, house: str) -> str:
@@ -297,10 +294,8 @@ PRIVACY = (
     "черг, щоб помітити, коли Житомиробленерго переносить адресу в іншу чергу; у повідомленнях я його не показую.\n\n"
     "Імені, телефону й геолокації не збираю. Дані зашифровані, зберігаються на сервері в ЄС і нікому "
     "не передаються.\n\n"
-    "Обираючи адресу, ти погоджуєшся на це. /stop - відписатися: я видалю все, а резервні копії "
-    "зникнуть протягом 3 днів."
+    "/stop - відписатися: я видалю все, а резервні копії зникнуть протягом 3 днів."
 )
-CONSENT_LINE = "🔒 Обираючи адресу, ти погоджуєшся, що я збережу її (зашифровано). Деталі: /privacy · видалити все: /stop"
 
 
 class Bot:
@@ -323,20 +318,6 @@ class Bot:
         # Look at all 12 queues for the dashboard's Context section. Off on the always-on server
         # (owner decision D5: as few ZTOE requests as possible); subscribers' queues are still tracked.
         self.watch_all = True
-
-    def inform_existing_subscribers(self) -> int:
-        """Once: subscribers from before the privacy notice (16.10) get it now; /stop remains their way out."""
-        told = 0
-        for chat, sub in list(self.state.subs.items()):
-            if sub.consent_at:
-                continue
-            try:
-                self.send(int(chat), "Оновлення від Люсі 💡\n\n" + PRIVACY, None)
-            except Exception:  # noqa: BLE001 - unreachable now (e.g. blocked): try again next start
-                continue
-            sub.consent_at = datetime.now(KYIV).date().isoformat()
-            told += 1
-        return told
 
     def reset_window(self) -> None:
         """Start a new dashboard window (the always-on server reports every few minutes)."""
@@ -386,7 +367,7 @@ class Bot:
                 self.stats["outcome:unsubscribed"] += 1
             self.state.sessions.pop(chat, None)
             self.state.keyboards.pop(chat, None)
-            self.state.seen.pop(chat_tag(chat), None)  # consent withdrawn: nothing about this chat is kept
+            self.state.seen.pop(chat_tag(chat), None)  # /stop: nothing about this chat is kept
             self.send(chat_id, "Добре, більше не турбуватиму 💤 Я видалила твою адресу й налаштування "
                                "(резервні копії зникнуть протягом 3 днів). Захочеш повернути мене - надішли /start.",
                       None)
@@ -432,8 +413,7 @@ class Bot:
     def start(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Привіт! Я Світло Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене "
-                               f"вимикатимуть і вмикатимуть.\n\n{CONSENT_LINE}", None)
+            self.send(chat_id, "Привіт! Я Світло Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
             self.ask_rem(chat_id)
             return
         # No question here: changing the address is the user's own choice via the menu (/change).
@@ -605,8 +585,7 @@ class Bot:
         self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
                                              street_id=street_id, house=house,
                                              checked_at=datetime.now(KYIV).isoformat(),
-                                             bot_id=self.state.bot_id,
-                                             consent_at=datetime.now(KYIV).date().isoformat())
+                                             bot_id=self.state.bot_id)
         self.state.sessions.pop(chat, None)
         self.stats["outcome:address_changed" if old else "outcome:subscribed"] += 1
         head = "✅ Адресу змінено" if old else "✅ Готово"
