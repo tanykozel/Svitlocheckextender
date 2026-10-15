@@ -1,4 +1,5 @@
-# Exact, hash-checked dependencies for the GitHub Actions runs (ubuntu-latest, Python 3.12, x86_64).
+# Exact, hash-checked dependencies (x86_64 Linux): GitHub Actions runs (Python 3.12) and the always-on server
+# (Python 3.12-3.14, depending on the Ubuntu version). Hashes checked against pypi.org.
 # pip refuses any file whose hash differs, so a tampered or swapped package can never run with the
 # bot's secrets. Update: bump the version, then list the new wheels' sha256 from pypi.org.
 cryptography==43.0.3 \
@@ -7,6 +8,8 @@ cryptography==43.0.3 \
     --hash=sha256:74f57f24754fe349223792466a709f8e0c093205ff0dca557af51072ff47ab18 \
     --hash=sha256:7e1ce50266f4f70bf41a2c6dc4358afadae90e2a1e5342d3c08883df1675374f
 cffi==2.1.1 \
-    --hash=sha256:c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf
+    --hash=sha256:c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf \
+    --hash=sha256:a931079504ecc49efed7744c476a5c343a92fabf66dec2db95edb1b2fdc770e2 \
+    --hash=sha256:b0431303acaea1089ad4b3e9ce4e6518193def1118d4073ca848635ee4ea2e96
 pycparser==3.11 \
     --hash=sha256:51d5a8ba2be0bbe440b99d2112604c95bbbc3c2748a64260186c541e1729cd80
