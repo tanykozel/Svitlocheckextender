@@ -24,7 +24,7 @@ from .secure import chat_tag
 from .schedule import KYIV, Event, EventKind, Status, merge, status_at, transitions
 
 MAX_BUTTONS = 30
-MENU_VERSION = 6  # bump on every MENU change so Telegram's menu is refreshed
+MENU_VERSION = 7  # bump on every MENU change so Telegram's menu is refreshed
 CHECK_EVERY_MIN = 10  # how often the scheduled job runs (.github/workflows/notify.yml)
 LEAD_CHOICES = (15, 30, 60)
 MENU = [
@@ -35,6 +35,7 @@ MENU = [
     ("change", "Змінити адресу"),
     ("stop", "Відписатися"),
     ("help", "Про Люсю і допомога"),
+    ("privacy", "Які дані я зберігаю"),
 ]
 DEFAULT_LEAD = 30
 # Every queue is watched for the dashboard's "how often does the schedule change" chart,
@@ -193,20 +194,33 @@ class Subscription:
     # The bot this person is known to reach us on (they wrote to it, or it delivered a message to them).
     # After a bot switch, old subscribers count as active only once the new bot reaches them.
     bot_id: int | None = None
+    # When the person agreed (owner decision 16.10: choosing an address after the /start notice is consent;
+    # /stop withdraws it and deletes everything). Date only.
+    consent_at: str = ""
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
                 "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
                 "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict(),
-                "bot_id": self.bot_id}
+                "bot_id": self.bot_id, "consent_at": self.consent_at}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
-        return cls(int(raw["queue"]), int(raw["subqueue"]), str(raw.get("label", "")),
+        house = str(raw.get("house", ""))
+        return cls(int(raw["queue"]), int(raw["subqueue"]), label_without_house(str(raw.get("label", "")), house),
                    State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
-                   str(raw.get("street_id", "")), str(raw.get("house", "")),
+                   str(raw.get("street_id", "")), house,
                    str(raw.get("checked_at", "")), str(raw.get("problem", "")),
-                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None)
+                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None, str(raw.get("consent_at", "")))
+
+
+def label_without_house(label: str, house: str) -> str:
+    """Data minimisation (16.10): labels show town and street only. Older labels ended with the house number."""
+    if house and " " in label:
+        head, last = label.rsplit(" ", 1)
+        if normalize(last).replace(" ", "") == house:
+            return head
+    return label
 
 
 @dataclass
@@ -269,11 +283,24 @@ HELP = (
     "/schedule - графік на сьогодні й завтра\n"
     "/status - стан за графіком зараз (без урахування аварійних відключень)\n"
     "/setting - за скільки хвилин попереджати\n"
-    "/stop - відписатися\n\n"
-    f"Графік перевіряю приблизно кожні {CHECK_EVERY_MIN} хв, тож відповідаю не миттєво - трохи терпіння 🙏\n"
+    "/stop - відписатися і видалити мої дані про тебе\n"
+    "/privacy - які дані я зберігаю\n\n"
     "Аварійні відключення, на жаль, передбачити не можу.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
+
+
+PRIVACY = (
+    "🔒 Що я зберігаю, щоб попереджати тебе:\n"
+    "• твій Telegram-чат - щоб надсилати сповіщення;\n"
+    "• населений пункт і вулицю, чергу та час попередження. Номер будинку - лише якщо на вулиці кілька "
+    "черг, щоб помітити, коли Житомиробленерго переносить адресу в іншу чергу; у повідомленнях я його не показую.\n\n"
+    "Імені, телефону й геолокації не збираю. Дані зашифровані, зберігаються на сервері в ЄС і нікому "
+    "не передаються.\n\n"
+    "Обираючи адресу, ти погоджуєшся на це. /stop - відписатися: я видалю все, а резервні копії "
+    "зникнуть протягом 3 днів."
+)
+CONSENT_LINE = "🔒 Обираючи адресу, ти погоджуєшся, що я збережу її (зашифровано). Деталі: /privacy · видалити все: /stop"
 
 
 class Bot:
@@ -296,6 +323,20 @@ class Bot:
         # Look at all 12 queues for the dashboard's Context section. Off on the always-on server
         # (owner decision D5: as few ZTOE requests as possible); subscribers' queues are still tracked.
         self.watch_all = True
+
+    def inform_existing_subscribers(self) -> int:
+        """Once: subscribers from before the privacy notice (16.10) get it now; /stop remains their way out."""
+        told = 0
+        for chat, sub in list(self.state.subs.items()):
+            if sub.consent_at:
+                continue
+            try:
+                self.send(int(chat), "Оновлення від Люсі 💡\n\n" + PRIVACY, None)
+            except Exception:  # noqa: BLE001 - unreachable now (e.g. blocked): try again next start
+                continue
+            sub.consent_at = datetime.now(KYIV).date().isoformat()
+            told += 1
+        return told
 
     def reset_window(self) -> None:
         """Start a new dashboard window (the always-on server reports every few minutes)."""
@@ -344,7 +385,13 @@ class Bot:
             if self.state.subs.pop(chat, None):
                 self.stats["outcome:unsubscribed"] += 1
             self.state.sessions.pop(chat, None)
-            self.send(chat_id, "Добре, більше не турбуватиму 💤 Захочеш повернути мене - надішли /start.", None)
+            self.state.keyboards.pop(chat, None)
+            self.state.seen.pop(chat_tag(chat), None)  # consent withdrawn: nothing about this chat is kept
+            self.send(chat_id, "Добре, більше не турбуватиму 💤 Я видалила твою адресу й налаштування "
+                               "(резервні копії зникнуть протягом 3 днів). Захочеш повернути мене - надішли /start.",
+                      None)
+        elif command == "/privacy":
+            self.send(chat_id, PRIVACY, None)
         elif command == "/status":
             self.status(chat_id)
         elif command == "/help":
@@ -385,7 +432,8 @@ class Bot:
     def start(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
         if sub is None:
-            self.send(chat_id, "Привіт! Я Світло Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене вимикатимуть і вмикатимуть.", None)
+            self.send(chat_id, "Привіт! Я Світло Люся 💡 Знайду твою адресу за 4 кроки і попереджатиму, коли мене "
+                               f"вимикатимуть і вмикатимуть.\n\n{CONSENT_LINE}", None)
             self.ask_rem(chat_id)
             return
         # No question here: changing the address is the user's own choice via the menu (/change).
@@ -512,7 +560,7 @@ class Bot:
         wanted = normalize(text).replace(" ", "")
         found = resolve_queue(self.dir.addresses(session["street"]), wanted) if wanted else "missing"
         if isinstance(found, tuple):
-            self.subscribe(chat_id, *found, self._label(session, text.strip()),
+            self.subscribe(chat_id, *found, self._label(session),  # no house number in the label (16.10)
                            street_id=session["street"], house=wanted)
             return
         self.stats["outcome:not_found"] += 1
@@ -557,7 +605,8 @@ class Bot:
         self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
                                              street_id=street_id, house=house,
                                              checked_at=datetime.now(KYIV).isoformat(),
-                                             bot_id=self.state.bot_id)
+                                             bot_id=self.state.bot_id,
+                                             consent_at=datetime.now(KYIV).date().isoformat())
         self.state.sessions.pop(chat, None)
         self.stats["outcome:address_changed" if old else "outcome:subscribed"] += 1
         head = "✅ Адресу змінено" if old else "✅ Готово"
@@ -641,7 +690,7 @@ class Bot:
         if text.startswith("/"):
             command = text.split()[0].lower().split("@")[0]
             known = {"/start", "/subscribe", "/change", "/address", "/setting", "/settings", "/schedule", "/test", "/demo",
-                     "/stop", "/status", "/help"}
+                     "/stop", "/status", "/help", "/privacy"}
             return command if command in known else "unknown_command"
         chat = str(message.get("chat", {}).get("id"))
         return "quiz_answer" if self.state.sessions.get(chat, {}).get("step") else "unknown_text"

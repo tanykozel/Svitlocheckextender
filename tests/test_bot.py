@@ -86,7 +86,11 @@ class BotTests(unittest.TestCase):
         self.assertIn("✅", text)
         self.assertIn("черга 3.1", text)
         sub = self.state.subs["42"]
-        self.assertEqual((sub.queue, sub.subqueue, sub.label), (3, 1, "с. Сусли, вул. Центральна 12а"))
+        # data minimisation (16.10): the house number decides the queue but is not shown in the label
+        self.assertEqual((sub.queue, sub.subqueue, sub.label), (3, 1, "с. Сусли, вул. Центральна"))
+        self.assertEqual(sub.house, "12а", "kept (encrypted) only for the 6-hourly queue re-check")
+        self.assertNotIn("12а", text.lower())
+        self.assertTrue(sub.consent_at, "consent date recorded when the address is chosen")
         self.assertNotIn("42", self.state.sessions)
         self.assertEqual(self.state.offset, last_update[-1]["update_id"] + 1, "offset confirms handled updates")
 
