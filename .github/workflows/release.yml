@@ -16,11 +16,11 @@ on:
         required: false
         default: ""
       target:
-        description: "Optional: an older commit on main to release (full 40-character id). Empty = latest main."
+        description: "Optional: an older commit on main to release (full 40-character id). Empty = latest main. GitHub refuses commits whose workflow files differ from main."
         required: false
         default: ""
-      replace:
-        description: "Re-create an existing release on the target commit (after a history cleanup). Notes are used as given."
+      remove:
+        description: "Remove this version's release and tag instead of publishing (title and notes are ignored)."
         type: boolean
         required: false
         default: false
@@ -48,37 +48,36 @@ jobs:
       - name: Check the target commit
         env:
           TARGET: ${{ inputs.target }}
-          REPLACE: ${{ inputs.replace }}
         run: |
-          if [ "$REPLACE" = "true" ] && [ -z "$TARGET" ]; then
-            echo "::error::replace needs a target commit"
-            exit 1
-          fi
           if [ -n "$TARGET" ]; then
             if ! [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]] || ! git merge-base --is-ancestor "$TARGET" origin/main; then
               echo "::error::target must be a full commit id that is part of main"
               exit 1
             fi
           fi
+      - name: Remove the release
+        if: inputs.remove
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          latest=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          if [ "$latest" = "$VERSION" ]; then
+            echo "::error::$VERSION is the latest release; it is not removed"
+            exit 1
+          fi
+          gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          echo "Removed release and tag $VERSION"
       - name: Publish the release
+        if: ${{ !inputs.remove }}
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           TITLE: ${{ inputs.title }}
           NOTES: ${{ inputs.notes }}
           TARGET: ${{ inputs.target }}
-          REPLACE: ${{ inputs.replace }}
         run: |
           printf '%s\n' "$NOTES" > notes.md
-          if [ "$REPLACE" = "true" ]; then
-            # The old release and its tag point to a commit removed from history: delete both, then re-create.
-            # Notes already hold the original text; an old version must not become "Latest".
-            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
-            git push origin ":refs/tags/$VERSION" 2>/dev/null || true
-            gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "$TARGET" \
-              --title "$TITLE" --notes-file notes.md --latest=false
-          else
-            gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "${TARGET:-$GITHUB_SHA}" \
-              --title "$TITLE" --notes-file notes.md --generate-notes
-          fi
+          gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --target "${TARGET:-$GITHUB_SHA}" \
+            --title "$TITLE" --notes-file notes.md --generate-notes
           echo "Published: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$VERSION"
