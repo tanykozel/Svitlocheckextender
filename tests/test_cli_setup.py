@@ -202,6 +202,7 @@ class ServeTests(unittest.TestCase):
 
         def grab(bot, *_a, **_k):
             seen["dir"] = bot.dir
+            seen["watch_all"] = bot.watch_all
             return 0
 
         with tempfile.TemporaryDirectory() as tmp, \
@@ -214,6 +215,7 @@ class ServeTests(unittest.TestCase):
              redirect_stdout(io.StringIO()) as out:
             cli.main(["bot", "--state", str(Path(tmp) / "b.json"), "--forever", "--ztoe-every", "15"])
         self.assertIsInstance(seen["dir"], ScheduleCache, "alerts and replies use the copy in memory")
+        self.assertFalse(seen["watch_all"], "server reads only subscribers' queues (D5)")
         self.assertIn("ZTOE read every 15 min", out.getvalue())
 
 

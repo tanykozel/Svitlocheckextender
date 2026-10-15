@@ -35,17 +35,26 @@ class ScheduleCache:
             self._data[(queue, subqueue)] = (self._clock(), raw)
         return raw
 
-    def refresh(self, keys: Iterable[tuple[int, int]]) -> None:
-        """Fetch each queue again; on failure keep the previous copy."""
-        for key in sorted(set(keys)):
+    def refresh(self, keys: Iterable[tuple[int, int]], pause: float = 0,
+                wait: Callable[[float], object] = time.sleep) -> int:
+        """Fetch each queue again, one at a time with `pause` seconds between requests (gentle on ZTOE).
+
+        On failure the previous copy stays. Returns how many requests failed in this round.
+        """
+        failed = 0
+        for index, key in enumerate(sorted(set(keys))):
+            if index and pause:
+                wait(pause)
             try:
                 raw = self._dir.schedule(*key)
             except Exception:  # noqa: BLE001 - one queue failing must not stop the others
-                with self._lock:
-                    self._errors += 1
+                failed += 1
                 continue
             with self._lock:
                 self._data[key] = (self._clock(), raw)
+        with self._lock:
+            self._errors += failed
+        return failed
 
     def take_errors(self) -> int:
         """Failed background fetches since the last call (moved into the dashboard counters)."""
@@ -60,15 +69,20 @@ class ScheduleCache:
 
 
 def start_refresher(cache: ScheduleCache, keys: Callable[[], Iterable[tuple[int, int]]], every: float,
-                    stop: threading.Event) -> threading.Thread:
-    """Refresh `keys()` now and then every `every` seconds until `stop` is set."""
+                    stop: threading.Event, pause: float = 2) -> threading.Thread:
+    """Refresh `keys()` now and then every `every` seconds until `stop` is set.
+
+    Requests are spaced `pause` seconds apart; after a round with ZTOE errors the next round is skipped,
+    so a struggling site gets a break instead of more requests.
+    """
     def run() -> None:
         while not stop.is_set():
+            failed = 0
             try:
-                cache.refresh(keys())
+                failed = cache.refresh(keys(), pause=pause, wait=stop.wait)
             except Exception:  # noqa: BLE001 - never let the refresher die; the next round retries
-                pass
-            stop.wait(every)
+                failed = 1
+            stop.wait(every * (2 if failed else 1))
 
     thread = threading.Thread(target=run, name="ztoe-refresh", daemon=True)
     thread.start()

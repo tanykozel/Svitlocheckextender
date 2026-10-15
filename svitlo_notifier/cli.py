@@ -21,7 +21,7 @@ from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
 from .secure import StateKeyError, chat_tag, load_json, save_json
-from .bot import MENU, MENU_VERSION, WATCH_QUEUES, Bot, BotState, Subscription
+from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
 from .telegram import (TelegramError, answer_callback, get_me, get_updates, recent_chats, remove_buttons,
                        send_message, set_commands)
 
@@ -285,8 +285,10 @@ def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts
     refresher_stop = threading.Event()
     cache = bot.dir if isinstance(bot.dir, ScheduleCache) else None
     if cache is not None:
+        bot.watch_all = False  # D5: only subscribers' queues are read, to keep ZTOE requests minimal
+
         def needed() -> set[tuple[int, int]]:
-            return {(s.queue, s.subqueue) for s in list(bot.state.subs.values())} | set(WATCH_QUEUES)
+            return {(s.queue, s.subqueue) for s in list(bot.state.subs.values())}
         start_refresher(cache, needed, args.ztoe_every * 60, refresher_stop)
     window_start = time.monotonic()
     next_alerts = time.monotonic()
