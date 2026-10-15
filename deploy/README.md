@@ -48,7 +48,7 @@ Security set up by `setup.sh`:
    ```
 3. **Fill in the secrets.** Type them on the server only, never in a chat:
    ```
-   nano /etc/svitlo/bot.env      # TELEGRAM_BOT_TOKEN, SVITLO_STATE_KEY (same as the GitHub secrets), health URL
+   nano /etc/svitlo/bot.env      # TELEGRAM_BOT_TOKEN (BotFather → /mybots → API Token), SVITLO_STATE_KEY, health URL
    nano /etc/svitlo/github.env   # GITHUB_TOKEN from step 3 above
    ```
    In nano: Ctrl+O, then Enter to save, then Ctrl+X to exit.
@@ -58,6 +58,10 @@ Security set up by `setup.sh`:
 1. **Stop the GitHub bot.** GitHub → Settings → Secrets and variables → Actions → **Variables** → New variable: `BOT_HOST` = `server`.
    Then wait until no "Outage alerts" run is still running (Actions tab).
 2. **Export the subscribers.** Actions → **Export bot state** → Run workflow. The file stays encrypted.
+   *Lost the original `SVITLO_STATE_KEY` value?* On the server run `openssl rand -base64 32`, save the result in
+   your password manager, put it into `/etc/svitlo/bot.env` as `SVITLO_STATE_KEY`, and add it on GitHub as a new
+   secret **`SVITLO_STATE_KEY_SERVER`** before running the export: the export then re-encrypts the subscribers with
+   it. The GitHub copy keeps the old key, so the rollback below still works.
 3. **On the server:**
    ```
    bash /opt/svitlo/deploy/import-state.sh
