@@ -21,7 +21,7 @@ from .ntfy import NtfyError, send_push
 from .planner import Settings, State, plan, summary
 from .schedule import KYIV
 from .secure import StateKeyError, chat_tag, load_json, save_json
-from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
+from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription, text_topics
 from .telegram import (TelegramError, answer_callback, delete_message, get_me, get_updates, recent_chats,
                        remove_buttons, send_message, set_commands, show_choice)
 
@@ -405,6 +405,21 @@ def cmd_metrics_merge(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discovery(args: argparse.Namespace) -> int:
+    """Print the discovery texts: topic counts first, then the texts, newest first."""
+    raw = load_json(Path(args.state), _state_key()) or {}
+    since = (datetime.now(KYIV) - timedelta(days=args.days)).date().isoformat()
+    texts = [(day, text) for day, text in raw.get("free_texts", []) if day >= since]
+    topics = Counter(topic for _day, text in texts for topic in text_topics(text))
+    print(f"{len(texts)} free-text message(s) the bot did not understand, last {args.days} days")
+    for topic, count in topics.most_common():
+        print(f"  {topic:9} {count}")
+    print()
+    for day, text in reversed(texts):
+        print(f"{day}  {text}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="svitlo_notifier", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -440,6 +455,11 @@ def build_parser() -> argparse.ArgumentParser:
     dash.add_argument("--sha", default=os.environ.get("GITHUB_SHA", ""), help="the code version (commit) that ran")
     dash.add_argument("--ref", default=os.environ.get("GITHUB_REF_NAME", ""), help="the branch it ran from")
     dash.set_defaults(func=cmd_metrics_merge)
+
+    disc = sub.add_parser("discovery", help="owner only: what people asked in their own words (masked, anonymous)")
+    disc.add_argument("--state", default=os.environ.get("SVITLO_BOT_STATE", ".state/bot.json"))
+    disc.add_argument("--days", type=int, default=30, help="only the last N days (default 30)")
+    disc.set_defaults(func=cmd_discovery)
 
     tg = sub.add_parser("telegram-setup", help="check the bot token, find your chat id, send a test message")
     tg.set_defaults(func=cmd_telegram_setup)

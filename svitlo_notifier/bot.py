@@ -336,6 +336,9 @@ class BotState:
     seen: dict[str, str] = field(default_factory=dict)
     # Messages in each chat as [message id, unix time], so the chat can clean itself (CLEAN_AFTER).
     history: dict[str, list[list[int]]] = field(default_factory=dict)
+    # Discovery (owner, 16.10): free-text messages the bot did not understand, as [day, masked text].
+    # No chat id, digits masked, at most DISCOVERY_KEEP texts for DISCOVERY_DAYS days; encrypted with the state.
+    free_texts: list[list[str]] = field(default_factory=list)
 
     def switch_bot(self, bot_id: int) -> bool:
         """Adopt a new bot token. Returns True if the bot changed.
@@ -358,7 +361,8 @@ class BotState:
         return {"offset": self.offset, "bot_id": self.bot_id, "menu_version": self.menu_version,
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions, "keyboards": self.keyboards,
-                "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen, "history": self.history}
+                "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen, "history": self.history,
+                "free_texts": self.free_texts}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
@@ -368,7 +372,38 @@ class BotState:
                    {k: int(v) for k, v in raw.get("keyboards", {}).items()},
                 {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")),
                 {str(k): str(v) for k, v in raw.get("seen", {}).items()},
-                {str(k): [[int(m), int(t)] for m, t in v] for k, v in raw.get("history", {}).items()})
+                {str(k): [[int(m), int(t)] for m, t in v] for k, v in raw.get("history", {}).items()},
+                [[str(d), str(t)] for d, t in raw.get("free_texts", [])])
+
+
+# --- discovery: what people ask in their own words ------------------------------------
+
+DISCOVERY_KEEP = 300
+DISCOVERY_DAYS = 30
+# Rough topics for the public dashboard counters (owner reads the texts themselves on the server).
+TOPICS = (
+    ("schedule", r"графік|коли|розклад|завтра|сьогодні|о котрій|скільки"),
+    ("power", r"світл|вимкн|вимик|увімкн|вмик|відключ|електр|струм"),
+    ("address", r"вул|вулиц|адрес|будин|квартир|провул|район|село|місто"),
+    ("queue", r"черг|підчерг|група"),
+    ("problem", r"не працю|помилк|неправильн|не прийш|не приход|не бачу|не можу|чому"),
+    ("thanks", r"дякую|дяк|спасиб|супер|клас"),
+    ("greeting", r"привіт|добр(ий|ого|е)|hello|hi\b"),
+)
+_MASKS = ((re.compile(r"\S+@\S+|https?://\S+|@\w+"), "…"), (re.compile(r"\d"), "#"))
+
+
+def mask_text(text: str) -> str:
+    """Keep the wording, drop what could identify someone: digits (house, flat, phone) become #,
+    links, e-mails and @names become «…». 200 characters at most."""
+    for pattern, replacement in _MASKS:
+        text = pattern.sub(replacement, text)
+    return re.sub(r"\s+", " ", text).strip()[:200]
+
+
+def text_topics(text: str) -> list[str]:
+    low = text.lower()
+    return [name for name, pattern in TOPICS if re.search(pattern, low)] or ["other"]
 
 
 # --- conversation ---------------------------------------------------------------------
@@ -388,6 +423,8 @@ HELP = (
     "/setting - за скільки хвилин попереджати\n"
     "/stop - відписатися\n\n"
     "🧹 Повідомлення, старші за 2 доби, я видаляю сама, щоб чат не засмічувався.\n"
+    "💬 Якщо я не зрозуміла твоє повідомлення, я анонімно зберігаю його текст (без імені, цифри приховані) "
+    "до 30 днів, щоб навчитися відповідати краще.\n"
     "Аварійні відключення, на жаль, передбачити не можу.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
@@ -531,7 +568,20 @@ class Bot:
             elif step == "house":
                 self.pick_house(chat_id, text)
             else:
+                self.note_free_text(text)
                 self.send(chat_id, NOT_UNDERSTOOD, None)
+
+    def note_free_text(self, text: str, today: str | None = None) -> None:
+        """Discovery: keep what people ask in their own words (masked, without who asked)."""
+        today = today or datetime.now(KYIV).date().isoformat()
+        for topic in text_topics(text):
+            self.stats[f"freetext:{topic}"] += 1
+        oldest = (datetime.fromisoformat(today) - timedelta(days=DISCOVERY_DAYS)).date().isoformat()
+        kept = [entry for entry in self.state.free_texts if entry[0] > oldest]
+        masked = mask_text(text)
+        if masked:
+            kept.append([today, masked])
+        self.state.free_texts = kept[-DISCOVERY_KEEP:]
 
     def handle_button(self, chat_id: int, data: str, message: dict | None = None) -> None:
         kind, _, value = data.partition(":")

@@ -81,6 +81,7 @@ Security set up by `setup.sh`:
 | Live log | `journalctl -fu svitlo-bot` |
 | Last deploys | `journalctl -u svitlo-update -n 20` |
 | Restart | `systemctl restart svitlo-bot` |
+| What people asked in their own words (discovery, owner only) | `bash /opt/svitlo/deploy/discovery.sh` |
 
 ## Going back to GitHub (rollback)
 
