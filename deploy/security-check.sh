@@ -52,7 +52,7 @@ ids=$(grep -cE '(^|[^0-9:.-])[0-9]{6,12}([^0-9:.-]|$)' <<<"$logs")
 addr=$(grep -ciE 'вул\.|вулиця|street [0-9]' <<<"$logs")
 if [ "$ids" -eq 0 ]; then ok "No chat-id-like numbers in 7 days of bot logs"; else bad "$ids log line(s) contain long numbers: check with journalctl -u svitlo-bot"; fi
 if [ "$addr" -eq 0 ]; then ok "No addresses in 7 days of bot logs"; else bad "$addr log line(s) mention a street"; fi
-if grep -rqE '"(subs|label|house|street_id|chat)"' $data/metrics $data/dash 2>/dev/null; then
+if grep -rqE '"(subs|label|house|street_id|chat|free_texts)"' $data/metrics $data/dash 2>/dev/null; then
   bad "Dashboard files contain personal fields"; else ok "Dashboard files hold numbers only"; fi
 
 echo "-- Bot service"

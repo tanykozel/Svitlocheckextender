@@ -194,6 +194,11 @@ def plan(raw: list[dict], now: datetime, state: State, settings: Settings) -> tu
     for index, event in enumerate(events):
         if event.kind == EventKind.POSSIBLE_OFF and not settings.notify_possible:
             continue
+        if fresh and event.at <= now:
+            # Already past when the person subscribed: settled now, so the next check (a minute later) does not
+            # apologise for a "late" alert they were never owed (owner's report 16.10, 08:32).
+            new_state.sent[event.key] = event.at.isoformat()
+            continue
         late = now - catch_up < event.at <= now and now < event.until
         window = settings.lead + settings.early
         if late and any(e.key in new_state.sent or e.at <= now + window for e in events[index + 1 :]):

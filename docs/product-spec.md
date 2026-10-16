@@ -89,7 +89,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - /schedule shows today and tomorrow: windows with durations, «Разом без світла», and the official link.
 
 **US-11 Address moved to another queue** (Must)
-- The bot stores where the queue came from (street + house) and re-reads each street at most every 6 h (one request per street).
+- The bot stores where the queue came from (street + house) and re-reads each street at most every 2 h (one request per street; owner 16.10, was 6 h).
 - *Given* the house moved to another queue, *then* the bot switches and says once «⚠️ … було 3.1, тепер 4.2.»
 - *Given* the house is gone, or the street splits into several queues, *then* it keeps the last queue and asks once to check via /change.
 - *Given* ZTOE is down, *then* nothing changes and it retries on the next tick. (Owner variables are not re-checked.)
@@ -152,7 +152,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 | Warning before off/on | user choice 15 / **30** / 60 min |
 | Bot reply | next tick (instant during *stay_minutes* sessions; instant for everyone in v0.4) |
 | Duplicates | at most one alert per change per user |
-| Address → queue re-check | every 6 h per subscriber |
+| Address → queue re-check | every 2 h per subscriber, one request per street (owner, 16.10: streets get split into several queues when the power situation gets worse) |
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.
@@ -199,6 +199,7 @@ Not held: name, @username, phone, location, message texts.
 | D2 | Persona «Світло Люся» with a functional display name | Decided | Section 4a. |
 | D3 | /start never asks to change the address | Decided | Change only via the menu (US-8). |
 | D7 | Chats clean themselves: messages older than ~2 days are deleted (both Люся's and the user's) | **Decided 16.10 (owner)** | Telegram lets a bot delete private-chat messages only within 48 h, so "3 days" is not possible; 46 h leaves a safe margin. Message ids (not texts) are kept in the encrypted state for that; /stop forgets them. Said in /help and /privacy. Counted on the dashboard as `messages_cleaned`. |
+| D8 | Discovery of free-text questions: what people type that the bot does not understand | **Decided 16.10 (owner)** | Before any AI assistant is considered, measure the need. Kept: the masked text (digits → #, links/e-mails/@names → …) and the day, **no chat id**, at most 300 texts for 30 days, inside the encrypted state. Public dashboard: topic counts only (`freetext:*`). Owner reads the texts on the server: `bash /opt/svitlo/deploy/discovery.sh`. Mentioned in /help. Review after 2–4 weeks: share of free text vs commands, top topics |
 | D6 | Privacy text for users (inside /help) | **On hold (owner, 16.10)** | Wording to be agreed later; no consent step; /stop is the way out. Already done: /stop deletes the address, settings and every trace of the chat (encrypted backups expire within 3 days). Data minimisation: labels show town and street only; the house number is kept (encrypted) only when a street has several queues, for the 6-hourly re-check. Hashing the house number was rejected: a few hundred possible numbers can be tried in a second. |
 | D5 | Replies instant; as few requests to ZTOE as possible: only subscribers' queues, every 10 min (15 is acceptable) | **Decided 15.10 (owner)** | Schedules are kept in memory and refreshed in the background, one request at a time 2 s apart, with a skipped round after a ZTOE error; about 12 requests/hour for 2 queues (was ~144). Alerts are still checked every minute from that copy, so they keep the chosen warning time. A ZTOE schedule edit is noticed within ≤10 min. Trade-off: dashboard section 4 (Context) covers subscribers' queues only. |
 | D4 | v0.4 hosting: own small server (EU VPS, ~€4–5/month) instead of Cloudflare Workers or an external trigger | **Decided 15.10 (owner)** | Same Python code, no rewrite; ~1 s replies; alerts every minute and never later than the chosen warning time (sent up to 1 min early). Trade-off accepted: the owner operates the server (automatic security updates, firewall, uptime check). Guide: deploy/README.md. |
