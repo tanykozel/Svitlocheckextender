@@ -408,6 +408,18 @@ def text_topics(text: str) -> list[str]:
 
 # --- conversation ---------------------------------------------------------------------
 
+HOUSE_REMINDER = "⚠️ Черга може бути неточною: напиши номер свого будинку (наприклад: 12 або 12А), щоб я стежила точно."
+
+
+def split_street_text(sub: "Subscription", rows: list[dict]) -> str:
+    """The street a person follows without a house number now has several queues: say so and ask for the house."""
+    found = sorted({q for r in rows if (q := _queue_of(r))})
+    queues = ", ".join(f"{queue}.{subqueue}" for queue, subqueue in found)
+    return (f"⚠️ Житомиробленерго розділило твою вулицю ({sub.label}) на кілька черг: {queues}.\n"
+            "Напиши номер свого будинку (наприклад: 12 або 12А) - і я стежитиму за точною чергою.\n"
+            f"Поки що попереджаю за чергою {sub.queue}.{sub.subqueue}, але вона може бути неточною.")
+
+
 NO_QUEUE = ("Для цієї адреси Житомиробленерго не вказує черги відключень 🤔 Тому попереджати за нею не можу. "
             "Перевір адресу або обери іншу: /change")
 NOT_UNDERSTOOD = "Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help."
@@ -567,9 +579,18 @@ class Bot:
                 self.pick_street_by_text(chat_id, text)
             elif step == "house":
                 self.pick_house(chat_id, text)
+            elif self._awaits_house(chat) and text.strip()[:1].isdigit():
+                # The street was split and the bot asked for the house number: this is the answer.
+                sub = self.state.subs[chat]
+                self.state.sessions[chat] = {"step": "house", "street": sub.street_id, "label": sub.label}
+                self.pick_house(chat_id, text)
             else:
                 self.note_free_text(text)
                 self.send(chat_id, NOT_UNDERSTOOD, None)
+
+    def _awaits_house(self, chat: str) -> bool:
+        sub = self.state.subs.get(chat)
+        return bool(sub and sub.problem == "ambiguous" and sub.street_id)
 
     def note_free_text(self, text: str, today: str | None = None) -> None:
         """Discovery: keep what people ask in their own words (masked, without who asked)."""
@@ -851,6 +872,8 @@ class Bot:
 
     @staticmethod
     def _label(session: dict, house: str = "") -> str:
+        if session.get("label"):  # house asked after a street split: the address is already known
+            return session["label"]
         street = " ".join(filter(None, (session.get("street_name", ""), house)))
         return ", ".join(filter(None, (session.get("city_name", ""), street)))
 
@@ -998,8 +1021,7 @@ class Bot:
                     text = ("⚠️ Не можу знайти твою адресу в базі Житомиробленерго. Поки попереджаю за "
                             f"чергою {sub.queue}.{sub.subqueue}. Перевір адресу: /change"
                             if found == "missing" else
-                            "⚠️ На твоїй вулиці тепер кілька різних черг. Вкажи номер будинку, щоб я "
-                            f"попереджала точно: /change (поки що стежу за чергою {sub.queue}.{sub.subqueue})")
+                            split_street_text(sub, rows))
                     self.send(int(chat), text, None)
             except Exception as exc:  # noqa: BLE001 - delivery problems are handled in send_alerts
                 print(f"warning: could not notify {chat_tag(chat)} about its queue: {type(exc).__name__}")
@@ -1025,6 +1047,8 @@ class Bot:
                 continue
             settings = Settings(lead=timedelta(minutes=sub.lead_minutes), early=self.alert_early, label=sub.label)
             messages, new_alerts = plan(raw, now, sub.alerts, settings)
+            if sub.problem == "ambiguous":  # street split, house not given yet: remind with every alert
+                messages = [f"{text}\n\n{HOUSE_REMINDER}" for text in messages]
             try:
                 for text in messages:
                     self.send(int(chat), text, None)

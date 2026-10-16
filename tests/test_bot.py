@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from svitlo_notifier.api import ApiError
 from svitlo_notifier.bot import Bot, BotState, Subscription, house_numbers, match, normalize
+from svitlo_notifier.planner import State
 from svitlo_notifier.schedule import KYIV
 from svitlo_notifier.telegram import TelegramError
 from tests.test_planner import TODAY
@@ -314,10 +315,49 @@ class QueueChangeTests(unittest.TestCase):
         self.bot.refresh_queues(self.t0 + timedelta(hours=7))
         texts = dict(self.sent)
         self.assertIn("Не можу знайти твою адресу", texts[1])
-        self.assertIn("кілька різних черг", texts[2])
+        self.assertIn("розділило твою вулицю (Сусли 2) на кілька черг: 2.2, 6.1", texts[2])
         self.assertEqual((house_sub.queue, street_sub.queue), (3, 2), "keep alerting on the last known queue")
         self.bot.refresh_queues(self.t0 + timedelta(hours=14))
         self.assertEqual(len(self.sent), 2, "each problem is reported only once")
+
+    def split_street(self):
+        """Owner's use case 16.10: subscribed to a whole street, later ZTOE splits it into several queues."""
+        street_sub = self.sub(2, "179889", "", queue=(2, 2))
+        self.rows["179889"] = [{"id": "1", "name": "1 - побутові споживачі", "cherga": 2, "pidcherga": 2},
+                               {"id": "2", "name": "3 - побутові споживачі", "cherga": 6, "pidcherga": 1}]
+        self.bot.refresh_queues(self.t0 + timedelta(hours=7))
+        return street_sub
+
+    def test_after_a_split_the_house_number_is_answered_in_the_chat(self):
+        self.split_street()
+        self.assertIn("Напиши номер свого будинку", self.sent[-1][1])
+        self.bot.handle_text(2, "3")  # no /change, no 4 steps
+        sub = self.state.subs["2"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.house, sub.label, sub.problem), (6, 1, "3", "Сусли 2", ""))
+        self.assertIn("черга 6.1", self.sent[-1][1])
+
+    def test_after_a_split_other_text_is_not_taken_as_a_house(self):
+        self.split_street()
+        self.bot.handle_text(2, "привіт")
+        self.assertIn("не розумію", self.sent[-1][1])
+        self.assertEqual(self.state.subs["2"].problem, "ambiguous")
+
+    def test_unknown_house_after_a_split_can_be_typed_again(self):
+        self.split_street()
+        self.bot.handle_text(2, "99")
+        self.assertIn("Не знайшла будинок «99»", self.sent[-1][1])
+        self.bot.handle_text(2, "1")
+        self.assertEqual(self.state.subs["2"].house, "1")
+
+    def test_alerts_remind_until_the_house_is_given(self):
+        sub = self.split_street()
+        sub.alerts = State()
+        self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))  # 20 min before the 08:00 outage
+        self.assertIn("Черга може бути неточною", self.sent[-1][1])
+        self.bot.handle_text(2, "1")
+        self.state.subs["2"].alerts = State()
+        self.bot.send_alerts(datetime(2026, 10, 13, 7, 40, tzinfo=KYIV))
+        self.assertNotIn("Черга може бути неточною", self.sent[-1][1], "no reminder once the house is known")
 
     def test_owner_subscription_without_street_is_not_rechecked(self):
         self.state.subs["9"] = Subscription(3, 1, "owner")
