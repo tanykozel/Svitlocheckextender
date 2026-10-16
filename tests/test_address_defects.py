@@ -122,6 +122,31 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_text(5, "85-а")
         self.assertEqual(self.state.subs["5"].queue, 3)
 
+    def test_home_or_business_is_asked_when_queues_differ(self):
+        # synthetic: house 10 listed for homes (5.1) and for businesses (2.1)
+        both = PARADZHANOVA + [{"id": "9", "cherga": 2, "pidcherga": 1,
+                                "name": "10 - непобутові (юридичні) споживачі"}]
+        self.dir.addresses = lambda street_id: both
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "10")
+        text, buttons = self.sent[-1]
+        self.assertIn("у двох чергах", text)
+        self.assertEqual([row[0][1] for row in buttons], ["t:home", "t:business"])
+        self.assertIn("5.1", buttons[0][0][0])
+        self.assertIn("2.1", buttons[1][0][0])
+        self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before the tap")
+        self.bot.handle_button(5, "t:business")
+        sub = self.state.subs["5"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.kind), (2, 1, "business"))
+        restored = BotState.from_dict(self.state.to_dict()).subs["5"]
+        self.assertEqual(restored.kind, "business")
+        self.assertEqual(resolve_queue(both, "10", restored.household()), (2, 1), "the re-check keeps the choice")
+
+    def test_no_question_when_both_types_share_a_queue_or_one_is_0_0(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "87")  # business 3.2 only
+        self.assertEqual(self.state.subs["5"].queue, 3)
+
     def test_old_house_button_is_ignored(self):
         self.bot.handle_button(5, "h:0")
         self.assertEqual(self.state.subs["5"].queue, 4)

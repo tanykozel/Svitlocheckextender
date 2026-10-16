@@ -192,17 +192,28 @@ def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
     return rows
 
 
-def resolve_queue(rows: list[dict], house: str) -> tuple[int, int] | str:
+def house_queues(rows: list[dict], house: str) -> dict[bool, tuple[int, int]]:
+    """A house's real queues by consumer type: {True: household queue, False: business queue} (0.0 left out)."""
+    house = house_key(house)
+    queues: dict[bool, tuple[int, int]] = {}
+    for row in rows:
+        for number, household in parse_houses(str(row.get("name", ""))):
+            if number == house and (queue := _queue_of(row)):
+                queues.setdefault(household, queue)
+    return queues
+
+
+def resolve_queue(rows: list[dict], house: str, household: bool | None = None) -> tuple[int, int] | str:
     """The queue for a house on a street, or "missing" / "ambiguous" / "no_queue" when it can't be decided.
 
-    A house may be listed several times (households and businesses, sometimes also under 0.0): household rows
-    win, and 0.0 is never a queue.
+    A house may be listed several times (households and businesses, sometimes also under 0.0): with no
+    `household` choice the household rows win; 0.0 is never a queue.
     """
     queues = {q for r in rows if (q := _queue_of(r))}
     if house:
         house = house_key(house)
         listed = False
-        for want_household in (True, False):
+        for want_household in ((True, False) if household is None else (household,)):
             for row in rows:
                 if (house, want_household) in parse_houses(str(row.get("name", ""))):
                     listed = True
@@ -277,12 +288,18 @@ class Subscription:
     # The bot this person is known to reach us on (they wrote to it, or it delivered a message to them).
     # After a bot switch, old subscribers count as active only once the new bot reaches them.
     bot_id: int | None = None
+    # "home" / "business" when the house is listed for both with different queues and the person chose;
+    # empty = household rows win (the usual case)
+    kind: str = ""
+
+    def household(self) -> bool | None:
+        return {"home": True, "business": False}.get(self.kind)
 
     def to_dict(self) -> dict:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
                 "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
                 "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict(),
-                "bot_id": self.bot_id}
+                "bot_id": self.bot_id, "kind": self.kind}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
@@ -291,7 +308,7 @@ class Subscription:
                    State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
                    str(raw.get("street_id", "")), house,
                    str(raw.get("checked_at", "")), str(raw.get("problem", "")),
-                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None)
+                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None, str(raw.get("kind", "")))
 
 
 def label_without_house(label: str, house: str) -> str:
@@ -502,7 +519,7 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
-        expected = {"r": "rem", "c": "city", "s": "street", "h": "house"}.get(kind)
+        expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house"}.get(kind)
         if expected:
             if self.state.sessions.get(str(chat_id), {}).get("step") != expected:
                 # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
@@ -524,6 +541,8 @@ class Bot:
             self.street_chosen(chat_id, value)
         elif kind == "h":
             self.house_chosen(chat_id, value)
+        elif kind == "t":
+            self.kind_chosen(chat_id, value)
 
     # quiz steps ------------------------------------------------------------------------
 
@@ -686,10 +705,28 @@ class Bot:
             return
         self._house_found(chat_id, self.dir.addresses(session["street"]), options[int(index)], options[int(index)])
 
+    def kind_chosen(self, chat_id: int, kind: str) -> None:
+        session = self._session(str(chat_id))
+        if kind not in ("home", "business") or not session.get("house"):
+            return
+        found = resolve_queue(self.dir.addresses(session["street"]), session["house"], kind == "home")
+        if isinstance(found, tuple):
+            self.subscribe(chat_id, *found, self._label(session), street_id=session["street"],
+                           house=session["house"], kind=kind)
+
     def _house_found(self, chat_id: int, rows: list[dict], listed: str, text: str) -> None:
         session = self._session(str(chat_id))
         session.pop("houses", None)
         wanted = house_key(listed)
+        queues = house_queues(rows, wanted) if wanted else {}
+        if len(set(queues.values())) == 2:
+            # Listed for homes and for businesses («юридичні») with different queues: the person chooses.
+            session["house"] = wanted
+            home, business = queues[True], queues[False]
+            self.send(chat_id, f"Будинок «{listed}» у Житомиробленерго є у двох чергах. Що за цією адресою?",
+                      [[(f"🏠 Житло - черга {home[0]}.{home[1]}", "t:home")],
+                       [(f"🏢 Організація / ФОП - черга {business[0]}.{business[1]}", "t:business")]])
+            return
         found = resolve_queue(rows, wanted) if wanted else "missing"
         if isinstance(found, tuple):
             self.subscribe(chat_id, *found, self._label(session),  # no house number in the label (16.10)
@@ -750,13 +787,13 @@ class Bot:
         return ", ".join(filter(None, (session.get("city_name", ""), street)))
 
     def subscribe(self, chat_id: int, queue: int, subqueue: int, label: str,
-                  street_id: str = "", house: str = "") -> None:
+                  street_id: str = "", house: str = "", kind: str = "") -> None:
         chat = str(chat_id)
         old = self.state.subs.get(chat)
         lead = old.lead_minutes if old else DEFAULT_LEAD
         # One address per chat: the new one replaces the old, with fresh alert history.
         self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
-                                             street_id=street_id, house=house,
+                                             street_id=street_id, house=house, kind=kind,
                                              checked_at=datetime.now(KYIV).isoformat(),
                                              bot_id=self.state.bot_id)
         self.state.sessions.pop(chat, None)
@@ -871,11 +908,10 @@ class Bot:
             rows = streets[sub.street_id]
             if rows is None:
                 continue  # try again next tick
-            if resolve_queue(rows, sub.house) == "no_queue":
-                sub.checked_at = now.isoformat()
-                continue  # 0.0 is not a queue: keep following the last real one
+            found = resolve_queue(rows, sub.house, sub.household())  # the home/business choice is kept
             sub.checked_at = now.isoformat()
-            found = resolve_queue(rows, sub.house)
+            if found == "no_queue":
+                continue  # 0.0 is not a queue: keep following the last real one
             try:
                 if isinstance(found, tuple):
                     sub.problem = ""
