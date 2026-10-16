@@ -70,14 +70,40 @@ def normalize(text: str) -> str:
     return _PREFIX.sub("", text).strip()
 
 
+_CUSTOMERS = re.compile(r"\s+-\s+(не)?побутові\b.*$", re.IGNORECASE)
+
+
+def house_key(text: str) -> str:
+    """'85-А', '85 А' and '85а' are the same house."""
+    return re.sub(r"[\s\-]", "", normalize(text))
+
+
+def parse_houses(raw: str) -> list[tuple[str, bool]]:
+    """'25 - побутові споживачі, 87 - непобутові (юридичні) споживачі' -> [('25', True), ('87', False)].
+
+    True = household («побутові»), False = business («непобутові (юридичні)»).
+    """
+    houses = []
+    for part in raw.split(","):
+        part = part.strip()
+        found = _CUSTOMERS.search(part)
+        number = _CUSTOMERS.sub("", part).strip()
+        if number:
+            houses.append((house_key(number), not (found and found.group(1))))
+    return houses
+
+
 def house_numbers(raw: str) -> list[str]:
     """'25 - побутові споживачі, 27А - побутові споживачі' -> ['25', '27а']."""
-    numbers = []
-    for part in raw.split(","):
-        part = re.sub(r"\s*-\s*[\w\s]*споживачі\s*$", "", part.strip()).strip()
-        if part:
-            numbers.append(normalize(part).replace(" ", ""))
-    return numbers
+    return [number for number, _household in parse_houses(raw)]
+
+
+def _queue_of(row: dict) -> tuple[int, int] | None:
+    """ZTOE writes 0.0 for addresses without an outage queue (roads, some businesses): not a queue."""
+    if row.get("cherga") is None:
+        return None
+    queue = (int(row["cherga"]), int(row.get("pidcherga") or 0))
+    return queue if queue[0] > 0 else None
 
 
 def name_of(option: dict) -> str:
@@ -106,13 +132,24 @@ def match(options: list[dict], query: str) -> list[dict]:
     return [o for o, n in names if typed and all(any(w.startswith(t) for w in _words(n)) for t in typed)]
 
 
-def similar(options: list[dict], query: str, limit: int = 4) -> list[dict]:
-    """Closest names for a typo ("Карпенко" -> "Карпенка"), for "did you mean" buttons."""
-    by_name: dict[str, list[dict]] = {}
-    for o in options:  # "вул. X" and "пров. X" share a name once the prefix is dropped: keep both
-        by_name.setdefault(normalize(name_of(o)), []).append(o)
-    close = difflib.get_close_matches(normalize(html.unescape(query)), list(by_name), n=limit, cutoff=0.75)
-    return [o for n in close for o in by_name[n]][:limit]
+def similar(options: list[dict], query: str, limit: int = 4, cutoff: float = 0.8) -> list[dict]:
+    """Closest names for a typo, word by word: «Паражанова» -> «вул. Сергія Параджанова»,
+    «Василя Карпенко» -> «вул. Василя Карпенка». For "did you mean" buttons."""
+    typed = _words(html.unescape(query))
+    if not typed:
+        return []
+    scored = []
+    for o in options:
+        words = _words(name_of(o))
+        if not words:
+            continue
+        # every typed word must resemble (or start) some word of the name; the weakest one counts
+        score = min(max(1.0 if w.startswith(t) else difflib.SequenceMatcher(None, t, w).ratio() for w in words)
+                    for t in typed)
+        if score >= cutoff:
+            scored.append((score, name_of(o), o))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [o for _score, _name, o in scored[:limit]]
 
 
 def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
@@ -123,16 +160,27 @@ def as_buttons(options: list[dict], prefix: str, per_row: int = 2) -> Buttons:
 
 
 def resolve_queue(rows: list[dict], house: str) -> tuple[int, int] | str:
-    """The queue for a house on a street, or "missing" / "ambiguous" when it can't be decided."""
-    queues = {(int(r["cherga"]), int(r["pidcherga"])) for r in rows if r.get("cherga") is not None}
+    """The queue for a house on a street, or "missing" / "ambiguous" / "no_queue" when it can't be decided.
+
+    A house may be listed several times (households and businesses, sometimes also under 0.0): household rows
+    win, and 0.0 is never a queue.
+    """
+    queues = {q for r in rows if (q := _queue_of(r))}
     if house:
-        for row in rows:
-            if row.get("cherga") is not None and house in house_numbers(str(row.get("name", ""))):
-                return int(row["cherga"]), int(row["pidcherga"])
-        return "missing"
+        house = house_key(house)
+        listed = False
+        for want_household in (True, False):
+            for row in rows:
+                if (house, want_household) in parse_houses(str(row.get("name", ""))):
+                    listed = True
+                    if (queue := _queue_of(row)):
+                        return queue
+        return "no_queue" if listed else "missing"
     if len(queues) == 1:
         return next(iter(queues))
-    return "ambiguous" if queues else "missing"
+    if queues:
+        return "ambiguous"
+    return "no_queue" if any(r.get("cherga") is not None for r in rows) else "missing"
 
 
 RESET_COMMANDS = {"/start", "/subscribe", "/change", "/address", "/stop"}
@@ -275,6 +323,8 @@ class BotState:
 
 # --- conversation ---------------------------------------------------------------------
 
+NO_QUEUE = ("Для цієї адреси Житомиробленерго не вказує черги відключень 🤔 Тому попереджати за нею не можу. "
+            "Перевір адресу або обери іншу: /change")
 NOT_UNDERSTOOD = "Я тебе не розумію 🙈 Обери команду з меню ☰ (кнопка «Menu» внизу) або надішли /help."
 
 HELP = (
@@ -419,6 +469,13 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
+        expected = {"r": "rem", "c": "city", "s": "street"}.get(kind)
+        if expected:
+            if self.state.sessions.get(str(chat_id), {}).get("step") != expected:
+                # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
+                self.stats["request:old_button"] += 1
+                return
+            self.retire_buttons(chat_id)  # the tap is taken: its buttons disappear at once
         if data == "a:change":
             self.ask_rem(chat_id)
         elif data == "a:keep":
@@ -544,6 +601,10 @@ class Bot:
 
     def pick_street_by_text(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
+        if normalize(text) == normalize(session.get("city_name", "")):
+            # The town typed again (e.g. while the tapped town was still loading): not a street.
+            self.send(chat_id, f"{session['city_name']} вже обрано ✅ Тепер напиши назву вулиці:", None)
+            return
         streets = self.dir.streets(session["city"])
         self._pick(chat_id, match(streets, text), "s", self.street_chosen, "таку вулицю", streets, text)
 
@@ -557,16 +618,25 @@ class Bot:
             self.subscribe(chat_id, *found, self._label(session), street_id=street_id)
         elif found == "missing":
             self.send(chat_id, "Ой, на цій вулиці не знайшла будинків 😕 Спробуй /start ще раз.", None)
+        elif found == "no_queue":
+            self.stats["outcome:no_queue"] += 1
+            self.state.sessions.pop(str(chat_id), None)  # the previous address (if any) stays as it was
+            self.send(chat_id, NO_QUEUE, None)
         else:
             self.send(chat_id, "4/4. Напиши номер будинку (наприклад: 12 або 12А):", None)
 
     def pick_house(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
-        wanted = normalize(text).replace(" ", "")
+        wanted = house_key(text)
         found = resolve_queue(self.dir.addresses(session["street"]), wanted) if wanted else "missing"
         if isinstance(found, tuple):
             self.subscribe(chat_id, *found, self._label(session),  # no house number in the label (16.10)
                            street_id=session["street"], house=wanted)
+            return
+        if found == "no_queue":
+            self.stats["outcome:no_queue"] += 1
+            self.state.sessions.pop(str(chat_id), None)
+            self.send(chat_id, NO_QUEUE, None)
             return
         self.stats["outcome:not_found"] += 1
         self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
@@ -582,7 +652,13 @@ class Bot:
                 session.setdefault("names", {}).update({str(o["id"]): name_of(o) for o in close})
                 self.send(chat_id, f"Не знайшла «{query.strip()}» 🤔 Може, одне з цього?", as_buttons(close, prefix))
                 return
-        if len(found) == 1:
+        if (prefix == "s" and len(found) == 1 and query
+                and normalize(name_of(found[0])) != normalize(html.unescape(query))):
+            # Only part of the name fits: ask, so a stray word never picks an address silently.
+            session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
+            self.send(chat_id, f"Це «{name_of(found[0])}»? Натисни, щоб підтвердити, або напиши інакше 👇",
+                      as_buttons(found, prefix))
+        elif len(found) == 1:
             session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
             chosen(chat_id, str(found[0]["id"]))
         elif not found:
@@ -723,6 +799,9 @@ class Bot:
             rows = streets[sub.street_id]
             if rows is None:
                 continue  # try again next tick
+            if resolve_queue(rows, sub.house) == "no_queue":
+                sub.checked_at = now.isoformat()
+                continue  # 0.0 is not a queue: keep following the last real one
             sub.checked_at = now.isoformat()
             found = resolve_queue(rows, sub.house)
             try:
@@ -755,6 +834,8 @@ class Bot:
         sent = 0
         for chat, sub in list(self.state.subs.items()):
             key = (sub.queue, sub.subqueue)
+            if sub.queue <= 0:
+                continue  # 0.0 is "no queue" (subscriptions from before 16.10): nothing to alert about
             if key not in schedules:
                 try:
                     schedules[key] = self.dir.schedule(*key)

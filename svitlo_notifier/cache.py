@@ -20,9 +20,33 @@ class ScheduleCache:
         self._lock = threading.Lock()
         self._data: dict[tuple[int, int], tuple[float, list[dict]]] = {}
         self._errors = 0
+        self._lists: dict[tuple, tuple[float, list[dict]]] = {}
 
-    def __getattr__(self, name):  # rems(), cities(), streets(), addresses(): always live (the address quiz)
+    LISTS_FOR = 24 * 3600  # districts, towns and street lists hardly change: keep them a day
+
+    def __getattr__(self, name):  # addresses(): always live (the address quiz needs current queues)
         return getattr(self._dir, name)
+
+    def _list(self, method: str, *args) -> list[dict]:
+        key = (method, *args)
+        with self._lock:
+            hit = self._lists.get(key)
+        if hit is not None and self._clock() - hit[0] < self.LISTS_FOR:
+            return hit[1]
+        data = getattr(self._dir, method)(*args)
+        with self._lock:
+            self._lists[key] = (self._clock(), data)
+        return data
+
+    def rems(self) -> list[dict]:
+        return self._list("rems")
+
+    def cities(self, rem_id: str) -> list[dict]:
+        return self._list("cities", rem_id)
+
+    def streets(self, city_id: str) -> list[dict]:
+        """966 streets for Zhytomyr take ZTOE seconds: kept, so the next «3/4» comes at once."""
+        return self._list("streets", city_id)
 
     def schedule(self, queue: int, subqueue: int) -> list[dict]:
         """The cached schedule; fetched live only the first time a queue is needed (e.g. a new subscriber)."""

@@ -280,7 +280,7 @@ def active_queues(state: BotState) -> set[tuple[int, int]]:
     Worked out again every round, so when ZTOE moves an address to another queue (the 6-hourly address
     re-check), the new queue is read from then on and the old one is dropped unless someone else uses it.
     """
-    return {(s.queue, s.subqueue) for s in list(state.subs.values())}
+    return {(s.queue, s.subqueue) for s in list(state.subs.values()) if s.queue > 0}
 
 
 def _serve(args: argparse.Namespace, bot: Bot, me: dict, read_and_answer, alerts) -> int:
