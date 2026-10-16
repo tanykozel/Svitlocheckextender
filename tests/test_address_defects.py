@@ -105,6 +105,23 @@ class QuizFlowTests(unittest.TestCase):
         self.assertIn("Може, одне з цього?", text)
         self.assertEqual(buttons[0][0][1], "s:174365")
 
+    def test_misspelt_street_is_offered_with_its_full_name(self):
+        for typed in ("Паражвнова", "паражанова", "Параджанва"):
+            self.bot.handle_text(5, typed)
+            text, buttons = self.sent[-1]
+            self.assertEqual(buttons[0][0], ("вул. Сергія Параджанова", "s:174365"), typed)
+            self.assertEqual(self.state.subs["5"].queue, 4, "never picked without a tap")
+
+    def test_partial_name_is_offered_not_picked(self):
+        self.bot.handle_text(5, "Параджанова")
+        text, buttons = self.sent[-1]
+        self.assertEqual(buttons[0][0], ("вул. Сергія Параджанова", "s:174365"))
+        self.assertNotIn("4/4", text)
+
+    def test_exact_full_name_is_picked_at_once(self):
+        self.bot.handle_text(5, "вул. Сергія Параджанова")
+        self.assertIn("4/4", self.last())
+
 
 class OldButtonTests(unittest.TestCase):
     """Tapping «місто Житомир» twice sent two «3/4», the second with an empty town name."""

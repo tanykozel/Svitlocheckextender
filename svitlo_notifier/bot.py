@@ -645,6 +645,22 @@ class Bot:
     def _pick(self, chat_id: int, found: list[dict], prefix: str, chosen: Callable[[int, str], None], what: str,
               options: list[dict] | None = None, query: str = "") -> None:
         session = self._session(str(chat_id))
+        exact = bool(found) and normalize(name_of(found[0])) == normalize(html.unescape(query))
+        if prefix == "s" and query and not exact and len(found) <= MAX_BUTTONS:
+            # A street is never picked from a partial or misspelt name: the right full names are offered as
+            # buttons and the person taps theirs («Паражвнова» -> [вул. Сергія Параджанова]).
+            close = found + [o for o in similar(options or [], query) if o not in found]
+            close = close[:MAX_BUTTONS]
+            if close:
+                session.setdefault("names", {}).update({str(o["id"]): name_of(o) for o in close})
+                if found:
+                    text = (f"Це «{name_of(close[0])}»? Натисни, щоб підтвердити, або напиши інакше 👇"
+                            if len(close) == 1 else "Знайшла кілька варіантів - обери свій:")
+                else:
+                    self.stats["outcome:did_you_mean"] += 1
+                    text = f"Не знайшла «{query.strip()}» 🤔 Може, одне з цього?"
+                self.send(chat_id, text, as_buttons(close, prefix))
+                return
         if not found and options:
             close = similar(options, query)  # a typo: offer the closest names as buttons
             if close:
@@ -652,13 +668,7 @@ class Bot:
                 session.setdefault("names", {}).update({str(o["id"]): name_of(o) for o in close})
                 self.send(chat_id, f"Не знайшла «{query.strip()}» 🤔 Може, одне з цього?", as_buttons(close, prefix))
                 return
-        if (prefix == "s" and len(found) == 1 and query
-                and normalize(name_of(found[0])) != normalize(html.unescape(query))):
-            # Only part of the name fits: ask, so a stray word never picks an address silently.
-            session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
-            self.send(chat_id, f"Це «{name_of(found[0])}»? Натисни, щоб підтвердити, або напиши інакше 👇",
-                      as_buttons(found, prefix))
-        elif len(found) == 1:
+        if len(found) == 1:
             session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
             chosen(chat_id, str(found[0]["id"]))
         elif not found:
