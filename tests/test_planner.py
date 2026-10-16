@@ -85,6 +85,15 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan(TODAY, at(13, 0), state, quick)[0], [])  # too long ago
         self.assertEqual(plan(TODAY, at(12, 20), State(), quick)[0], [])  # brand-new subscriber
 
+    def test_new_subscriber_gets_no_apology_a_minute_later(self):
+        # Owner's report 16.10: subscribed at 08:31 during the 08:00 outage, got «Вибач… із запізненням» at 08:32.
+        live = Settings(lead=timedelta(minutes=30))  # as the bot runs: schedule-change news on
+        first, state = plan(TODAY, at(8, 31), State(), live)
+        self.assertEqual(first, [])
+        self.assertEqual(plan(TODAY, at(8, 32), state, live)[0], [])
+        later, _ = plan(TODAY, at(11, 45), state, live)
+        self.assertEqual(len(later), 1, "the next real alert (power back at 12:00) still comes")
+
     def test_newer_alert_replaces_the_late_one(self):
         # 18:00 possible outage with a 30-min lead: at 17:45 that alert is due, so the missed
         # 17:30-ish news is not sent as an apology. Same if the newer alert already went out.
