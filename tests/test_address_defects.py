@@ -130,7 +130,7 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_button(5, "s:174365")
         self.bot.handle_text(5, "10")
         text, buttons = self.sent[-1]
-        self.assertIn("у двох чергах", text)
+        self.assertIn("і фізичну, і юридичну особу", text)
         self.assertEqual([row[0][1] for row in buttons], ["t:home", "t:business"])
         self.assertIn("5.1", buttons[0][0][0])
         self.assertIn("2.1", buttons[1][0][0])

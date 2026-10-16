@@ -723,9 +723,10 @@ class Bot:
             # Listed for homes and for businesses («юридичні») with different queues: the person chooses.
             session["house"] = wanted
             home, business = queues[True], queues[False]
-            self.send(chat_id, f"Будинок «{listed}» у Житомиробленерго є у двох чергах. Що за цією адресою?",
-                      [[(f"🏠 Житло - черга {home[0]}.{home[1]}", "t:home")],
-                       [(f"🏢 Організація / ФОП - черга {business[0]}.{business[1]}", "t:business")]])
+            self.send(chat_id, f"Я знайшла за адресою «{listed}» і фізичну, і юридичну особу - у них різні черги. "
+                               "Обери свій варіант 👇",
+                      [[(f"🏠 Фізична особа (житло) - черга {home[0]}.{home[1]}", "t:home")],
+                       [(f"🏢 Юридична особа / ФОП - черга {business[0]}.{business[1]}", "t:business")]])
             return
         found = resolve_queue(rows, wanted) if wanted else "missing"
         if isinstance(found, tuple):
