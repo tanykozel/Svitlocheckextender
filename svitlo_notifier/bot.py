@@ -559,9 +559,8 @@ class Bot:
             self.state.sessions.pop(chat, None)
             self.state.keyboards.pop(chat, None)
             self.state.seen.pop(chat_tag(chat), None)  # /stop: nothing about this chat is kept
-            self.send(chat_id, "Добре, більше не турбуватиму 💤 Я видалила твою адресу й налаштування "
-                               "(резервні копії зникнуть протягом 3 днів). Захочеш повернути мене - надішли /start.",
-                      None)
+            self.send(chat_id, "Добре, більше не турбуватиму 💤 Я видалила твою адресу й налаштування. "
+                               "Захочеш повернути мене - надішли /start.", None)
             self.state.history.pop(chat, None)  # after the reply, so not even its id is kept
         elif command == "/status":
             self.status(chat_id)
