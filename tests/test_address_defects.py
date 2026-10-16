@@ -195,6 +195,18 @@ class OldButtonTests(unittest.TestCase):
         self.assertEqual(len(self.sent), count, "no second «3/4»")
         self.assertEqual(self.state.sessions["1"]["step"], "street")
 
+    def test_tapped_answer_stays_visible(self):
+        """16.10: after the taps the chat showed 1/4, 2/4, 3/4 with no answers, as if the bot ran on alone."""
+        shown = []
+        self.bot._show_choice = lambda chat, message, text: shown.append((message, text))
+        self.bot.handle_text(1, "/start")
+        question = {"message_id": 1, "text": "1/4. Обери свій район (РЕМ):",
+                    "reply_markup": {"inline_keyboard": [[{"text": "Звягельський", "callback_data": "r:16"},
+                                                          {"text": "Житомирський", "callback_data": "r:7"}]]}}
+        self.bot.handle_button(1, "r:16", question)
+        self.assertEqual(shown, [(1, "1/4. Обери свій район (РЕМ):\n✅ Звягельський")])
+        self.assertIn("2/4", self.sent[-1])
+
     def test_buttons_disappear_when_tapped(self):
         self.bot.handle_text(1, "/start")
         self.bot.handle_button(1, "r:16")
