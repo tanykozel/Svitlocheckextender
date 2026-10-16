@@ -73,6 +73,16 @@ def remove_buttons(token: str, chat_id: int, message_id: int) -> None:
         pass
 
 
+def show_choice(token: str, chat_id: int, message_id: int, text: str) -> None:
+    """Replace a question's buttons with the answer tapped («1/4. Обери свій район: ✅ Житомирський»), so the
+    chat still shows what was chosen. Editing the text without reply_markup removes the buttons. Best effort."""
+    try:
+        _call(token, "editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text,
+                                         "disable_web_page_preview": True})
+    except TelegramError:
+        remove_buttons(token, chat_id, message_id)
+
+
 def get_updates(token: str, offset: int | None = None, wait: int = 0) -> list[dict]:
     """Pending messages and button taps. Telegram keeps them for 24 hours until confirmed by `offset`.
 

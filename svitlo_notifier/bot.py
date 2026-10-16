@@ -398,10 +398,12 @@ HELP = (
 class Bot:
     def __init__(self, directory: Directory, send: Send, state: BotState,
                  unbutton: Unbutton = lambda _chat, _message: None,
-                 delete: Callable[[int, int], bool] = lambda _chat, _message: False) -> None:
+                 delete: Callable[[int, int], bool] = lambda _chat, _message: False,
+                 show_choice: Callable[[int, int, str], None] | None = None) -> None:
         self.dir = directory
         self._send = send
         self._unbutton = unbutton
+        self._show_choice = show_choice
         self._delete = delete
         self.state = state
         # Aggregate counters for the owner dashboard ("request:/start", "failure:ztoe", ...). No chat ids.
@@ -427,6 +429,20 @@ class Bot:
         self.alert_notices = []
         self.queued_at_start = 0  # with long polling, nothing waits for a run to start
         self.queued_by_kind = Counter()
+
+    def _mark_choice(self, chat_id: int, data: str, message: dict) -> bool:
+        """The tapped question keeps its text plus «✅ <answer>» instead of its buttons (owner's report 16.10:
+        with the buttons simply removed, 1/4, 2/4, 3/4 looked like answers to nobody)."""
+        rows = (message.get("reply_markup") or {}).get("inline_keyboard") or []
+        label = next((b.get("text", "") for row in rows for b in row if b.get("callback_data") == data), "")
+        if self._show_choice is None or not label or not message.get("text") or not message.get("message_id"):
+            return False
+        self._show_choice(chat_id, int(message["message_id"]), f"{message['text']}\n✅ {label}")
+        if self.state.keyboards.get(str(chat_id)) == int(message["message_id"]):
+            self.state.keyboards.pop(str(chat_id))
+        else:
+            self.retire_buttons(chat_id)
+        return True
 
     def retire_buttons(self, chat_id: int) -> None:
         """Remove the buttons from the bot's last message with buttons, if any."""
@@ -517,7 +533,7 @@ class Bot:
             else:
                 self.send(chat_id, NOT_UNDERSTOOD, None)
 
-    def handle_button(self, chat_id: int, data: str) -> None:
+    def handle_button(self, chat_id: int, data: str, message: dict | None = None) -> None:
         kind, _, value = data.partition(":")
         expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house"}.get(kind)
         if expected:
@@ -525,7 +541,8 @@ class Bot:
                 # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
                 self.stats["request:old_button"] += 1
                 return
-            self.retire_buttons(chat_id)  # the tap is taken: its buttons disappear at once
+            if not self._mark_choice(chat_id, data, message or {}):
+                self.retire_buttons(chat_id)  # the tap is taken: its buttons disappear at once
         if data == "a:change":
             self.ask_rem(chat_id)
         elif data == "a:keep":
@@ -857,7 +874,7 @@ class Bot:
                     query = update["callback_query"]
                     chat_id = (query.get("message") or {}).get("chat", {}).get("id")
                     if chat_id is not None:
-                        self.handle_button(chat_id, str(query.get("data", "")))
+                        self.handle_button(chat_id, str(query.get("data", "")), query.get("message"))
                 elif "message" in update and "text" in update["message"]:
                     message = update["message"]
                     self.handle_text(message["chat"]["id"], message["text"])

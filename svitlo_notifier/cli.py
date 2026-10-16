@@ -23,7 +23,7 @@ from .schedule import KYIV
 from .secure import StateKeyError, chat_tag, load_json, save_json
 from .bot import MENU, MENU_VERSION, Bot, BotState, Subscription
 from .telegram import (TelegramError, answer_callback, delete_message, get_me, get_updates, recent_chats,
-                       remove_buttons, send_message, set_commands)
+                       remove_buttons, send_message, set_commands, show_choice)
 
 
 def _env_int(name: str) -> int | None:
@@ -218,7 +218,8 @@ def cmd_bot(args: argparse.Namespace) -> int:
     directory = ScheduleCache(GpvClient()) if args.forever else GpvClient()
     bot = Bot(directory, lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
               unbutton=lambda chat, message: remove_buttons(token, chat, message),
-              delete=lambda chat, message: delete_message(token, chat, message))
+              delete=lambda chat, message: delete_message(token, chat, message),
+              show_choice=lambda chat, message, text: show_choice(token, chat, message, text))
 
     def read_and_answer(wait: int) -> int:
         try:
