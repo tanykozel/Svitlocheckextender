@@ -65,7 +65,7 @@ There's also a 🟡 "possible outage" alert for yellow slots. Every alert is sen
 - **Replies:** on the always-on server (v0.4, [deploy/README.md](deploy/README.md)) Люся answers within seconds.
   While the bot still runs in short "ticks" on GitHub Actions, a reply can take ~10–30 minutes; Telegram keeps
   your messages until then, and if you tap several times, only your **latest** request is answered.
-- **One address per person.** If ZTOE moves your address to another queue, Люся notices within ~6 hours,
+- **One address per person.** If ZTOE moves your address to another queue, Люся notices within ~2 hours,
   switches over and tells you.
 
 ---

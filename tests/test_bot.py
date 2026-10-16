@@ -88,7 +88,7 @@ class BotTests(unittest.TestCase):
         sub = self.state.subs["42"]
         # data minimisation (16.10): the house number decides the queue but is not shown in the label
         self.assertEqual((sub.queue, sub.subqueue, sub.label), (3, 1, "с. Сусли, вул. Центральна"))
-        self.assertEqual(sub.house, "12а", "kept (encrypted) only for the 6-hourly queue re-check")
+        self.assertEqual(sub.house, "12а", "kept (encrypted) only for the 2-hourly queue re-check")
         self.assertNotIn("12а", text.lower())
         self.assertNotIn("42", self.state.sessions)
         self.assertEqual(self.state.offset, last_update[-1]["update_id"] + 1, "offset confirms handled updates")
@@ -276,7 +276,7 @@ class QueueChangeTests(unittest.TestCase):
         self.rows["179892"] = [{"id": "1", "name": "10 - побутові споживачі, 12А - побутові споживачі",
                                 "cherga": 4, "pidcherga": 2}]
         self.assertEqual(active_queues(self.state), {(3, 1), (1, 2)})
-        self.bot.refresh_queues(self.t0 + timedelta(hours=7))    # the 6-hourly address re-check, via the cache
+        self.bot.refresh_queues(self.t0 + timedelta(hours=7))    # the 2-hourly address re-check, via the cache
         self.assertEqual(active_queues(self.state), {(4, 2), (1, 2)}, "new queue read, old one dropped")
         self.dir.schedule_calls.clear()
         self.bot.send_alerts(self.t0 + timedelta(hours=7))
@@ -296,12 +296,12 @@ class QueueChangeTests(unittest.TestCase):
         self.assertEqual(self.bot.refresh_queues(self.t0 + timedelta(hours=14)), 0)
         self.assertEqual(len(self.sent), 1, "no repeat message when nothing changed")
 
-    def test_checked_at_most_every_6_hours_and_once_per_street(self):
+    def test_checked_at_most_every_2_hours_and_once_per_street(self):
         self.sub(1, "179892", "12а")
         self.sub(2, "179892", "14", queue=(5, 2))
         self.bot.refresh_queues(self.t0 + timedelta(hours=1))
         self.assertEqual(self.calls, [], "too soon to re-check")
-        self.bot.refresh_queues(self.t0 + timedelta(hours=6))
+        self.bot.refresh_queues(self.t0 + timedelta(hours=2))
         self.assertEqual(self.calls, ["179892"], "one request serves both subscribers")
         self.assertEqual(self.sent, [])
 

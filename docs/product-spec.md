@@ -89,7 +89,7 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 - /schedule shows today and tomorrow: windows with durations, «Разом без світла», and the official link.
 
 **US-11 Address moved to another queue** (Must)
-- The bot stores where the queue came from (street + house) and re-reads each street at most every 6 h (one request per street).
+- The bot stores where the queue came from (street + house) and re-reads each street at most every 2 h (one request per street; owner 16.10, was 6 h).
 - *Given* the house moved to another queue, *then* the bot switches and says once «⚠️ … було 3.1, тепер 4.2.»
 - *Given* the house is gone, or the street splits into several queues, *then* it keeps the last queue and asks once to check via /change.
 - *Given* ZTOE is down, *then* nothing changes and it retries on the next tick. (Owner variables are not re-checked.)
@@ -152,7 +152,7 @@ introduces herself inside the chat. Avatars and a 7-sticker set are in `assets/`
 | Warning before off/on | user choice 15 / **30** / 60 min |
 | Bot reply | next tick (instant during *stay_minutes* sessions; instant for everyone in v0.4) |
 | Duplicates | at most one alert per change per user |
-| Address → queue re-check | every 6 h per subscriber |
+| Address → queue re-check | every 2 h per subscriber, one request per street (owner, 16.10: streets get split into several queues when the power situation gets worse) |
 
 - All times are Europe/Kyiv. One schedule request per distinct queue per run; identifying User-Agent.
 - Secrets live only in GitHub secrets. Subscriber data is **encrypted at rest** (`SVITLO_STATE_KEY`, Fernet). Chat ids are never logged.

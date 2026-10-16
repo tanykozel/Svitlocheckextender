@@ -278,7 +278,7 @@ ALERT_EVERY = 60  # seconds between alert checks while the bot stays awake
 def active_queues(state: BotState) -> set[tuple[int, int]]:
     """The queues somebody is subscribed to: the only ones read from ZTOE on the server (D5).
 
-    Worked out again every round, so when ZTOE moves an address to another queue (the 6-hourly address
+    Worked out again every round, so when ZTOE moves an address to another queue (the 2-hourly address
     re-check), the new queue is read from then on and the old one is dropped unless someone else uses it.
     """
     return {(s.queue, s.subqueue) for s in list(state.subs.values()) if s.queue > 0}

@@ -904,10 +904,11 @@ class Bot:
         chat = str(message.get("chat", {}).get("id"))
         return "quiz_answer" if self.state.sessions.get(chat, {}).get("step") else "unknown_text"
 
-    def refresh_queues(self, now: datetime, every: timedelta = timedelta(hours=6)) -> int:
+    def refresh_queues(self, now: datetime, every: timedelta = timedelta(hours=2)) -> int:
         """Re-check each subscriber's address; follow ZTOE when it moves the address to another queue.
 
-        One address request per street, at most every `every`. Returns how many queues changed.
+        One address request per street, at most every `every` (2 h, owner 16.10: streets get split
+        into several queues when the power situation gets worse). Returns how many queues changed.
         """
         changed = 0
         streets: dict[str, list[dict] | None] = {}
