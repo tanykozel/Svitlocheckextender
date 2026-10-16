@@ -91,7 +91,8 @@ As a friend of the owner, I want to pick my address in the bot so that I get ale
 **US-11 Address moved to another queue** (Must)
 - The bot stores where the queue came from (street + house) and re-reads each street at most every 2 h (one request per street; owner 16.10, was 6 h).
 - *Given* the house moved to another queue, *then* the bot switches and says once «⚠️ … було 3.1, тепер 4.2.»
-- *Given* the house is gone, or the street splits into several queues, *then* it keeps the last queue and asks once to check via /change.
+- *Given* the house is gone, *then* it keeps the last queue and asks once to check via /change.
+- *Given* a person followed a whole street (no house number) and ZTOE splits it into several queues, *then* the bot says once «⚠️ Житомиробленерго розділило твою вулицю (…) на кілька черг: 1.1, 1.2, 3.2. Напиши номер свого будинку…», keeps alerting on the last queue, and the person simply **types the house number in the chat** (no /change, no 4 steps). Until then every alert ends with «⚠️ Черга може бути неточною: напиши номер свого будинку…». (Owner, 16.10)
 - *Given* ZTOE is down, *then* nothing changes and it retries on the next tick. (Owner variables are not re-checked.)
 
 **US-12 Most recent request wins** (Must; found in live testing)
