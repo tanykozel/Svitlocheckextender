@@ -74,8 +74,27 @@ _CUSTOMERS = re.compile(r"\s+-\s+(не)?побутові\b.*$", re.IGNORECASE)
 
 
 def house_key(text: str) -> str:
-    """'85-А', '85 А' and '85а' are the same house."""
+    """A house number as stored: lower case, no spaces ('27А' -> '27а'). '85-А' and '85А' stay different:
+    a number that is not written the way ZTOE lists it is offered as a button, never taken silently."""
+    return normalize(text).replace(" ", "")
+
+
+def _loose(text: str) -> str:
+    """For suggestions only: '85 а', '85а' and '85-А' look alike."""
     return re.sub(r"[\s\-]", "", normalize(text))
+
+
+def _house_parts(raw: str) -> list[tuple[str, bool]]:
+    """'25 - побутові споживачі, 87 - непобутові (юридичні) споживачі' -> [('25', True), ('87', False)],
+    numbers spelt as ZTOE lists them."""
+    houses = []
+    for part in raw.split(","):
+        part = part.strip()
+        found = _CUSTOMERS.search(part)
+        number = _CUSTOMERS.sub("", part).strip()
+        if number:
+            houses.append((number, not (found and found.group(1))))
+    return houses
 
 
 def parse_houses(raw: str) -> list[tuple[str, bool]]:
@@ -83,14 +102,28 @@ def parse_houses(raw: str) -> list[tuple[str, bool]]:
 
     True = household («побутові»), False = business («непобутові (юридичні)»).
     """
-    houses = []
-    for part in raw.split(","):
-        part = part.strip()
-        found = _CUSTOMERS.search(part)
-        number = _CUSTOMERS.sub("", part).strip()
-        if number:
-            houses.append((house_key(number), not (found and found.group(1))))
-    return houses
+    return [(house_key(number), household) for number, household in _house_parts(raw)]
+
+
+def listed_houses(rows: list[dict]) -> list[str]:
+    """Every house number on a street, spelt as ZTOE lists it (for buttons), each once."""
+    seen: dict[str, str] = {}
+    for row in rows:
+        for number, _household in _house_parts(str(row.get("name", ""))):
+            seen.setdefault(house_key(number), number)
+    return list(seen.values())
+
+
+def house_options(rows: list[dict], typed: str) -> list[str]:
+    """Listed numbers that look like what was typed: «85а» or «85 а» -> ['85-А']; «85» -> ['85-А', '85/1']."""
+    want = _loose(typed)
+    if not want:
+        return []
+    listed = listed_houses(rows)
+    same = [h for h in listed if _loose(h) == want]
+    longer = [h for h in listed if h not in same and _loose(h).startswith(want)
+              and not _loose(h)[len(want)].isdigit()]  # «85» suggests «85-А», never «850»
+    return same + longer
 
 
 def house_numbers(raw: str) -> list[str]:
@@ -469,7 +502,7 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str) -> None:
         kind, _, value = data.partition(":")
-        expected = {"r": "rem", "c": "city", "s": "street"}.get(kind)
+        expected = {"r": "rem", "c": "city", "s": "street", "h": "house"}.get(kind)
         if expected:
             if self.state.sessions.get(str(chat_id), {}).get("step") != expected:
                 # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
@@ -489,6 +522,8 @@ class Bot:
             self.city_chosen(chat_id, value)
         elif kind == "s":
             self.street_chosen(chat_id, value)
+        elif kind == "h":
+            self.house_chosen(chat_id, value)
 
     # quiz steps ------------------------------------------------------------------------
 
@@ -627,8 +662,35 @@ class Bot:
 
     def pick_house(self, chat_id: int, text: str) -> None:
         session = self._session(str(chat_id))
-        wanted = house_key(text)
-        found = resolve_queue(self.dir.addresses(session["street"]), wanted) if wanted else "missing"
+        rows = self.dir.addresses(session["street"])
+        exact = [h for h in listed_houses(rows) if normalize(h) == normalize(text)] if text.strip() else []
+        if exact:
+            self._house_found(chat_id, rows, exact[0], text)
+            return
+        options = house_options(rows, text)
+        if options and len(options) <= MAX_BUTTONS:
+            # Written differently from ZTOE («85а» vs «85-А»): the person confirms the official number.
+            session["houses"] = options
+            question = (f"Це будинок «{options[0]}»? Натисни, щоб підтвердити, або напиши інакше 👇"
+                        if len(options) == 1 else "Знайшла такі будинки - обери свій:")
+            buttons = [[(h[:30], f"h:{i}") for i, h in enumerate(options[j:j + 4], j)]
+                       for j in range(0, len(options), 4)]
+            self.send(chat_id, question, buttons)
+            return
+        self._house_found(chat_id, rows, "", text)
+
+    def house_chosen(self, chat_id: int, index: str) -> None:
+        session = self._session(str(chat_id))
+        options = session.get("houses", [])
+        if not index.isdigit() or int(index) >= len(options):
+            return
+        self._house_found(chat_id, self.dir.addresses(session["street"]), options[int(index)], options[int(index)])
+
+    def _house_found(self, chat_id: int, rows: list[dict], listed: str, text: str) -> None:
+        session = self._session(str(chat_id))
+        session.pop("houses", None)
+        wanted = house_key(listed)
+        found = resolve_queue(rows, wanted) if wanted else "missing"
         if isinstance(found, tuple):
             self.subscribe(chat_id, *found, self._label(session),  # no house number in the label (16.10)
                            street_id=session["street"], house=wanted)

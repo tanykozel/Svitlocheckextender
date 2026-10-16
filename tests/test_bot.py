@@ -341,7 +341,10 @@ class QueueChangeTests(unittest.TestCase):
                              {"update_id": 3, "message": {"chat": {"id": 5}, "text": "Сусли"}},
                              {"update_id": 4, "callback_query": {"id": "b", "data": "s:179892",
                                                                  "message": {"chat": {"id": 5}}}},
-                             {"update_id": 5, "message": {"chat": {"id": 5}, "text": "12 А"}}])
+                             {"update_id": 5, "message": {"chat": {"id": 5}, "text": "12 А"}},
+                             # «12 А» is not how ZTOE writes it: «12А» is offered and tapped
+                             {"update_id": 6, "callback_query": {"id": "c", "data": "h:0",
+                                                                 "message": {"chat": {"id": 5}}}}])
         sub = self.state.subs["5"]
         self.assertEqual((sub.street_id, sub.house, sub.queue), ("179892", "12а", 3))
         restored = BotState.from_dict(self.state.to_dict()).subs["5"]

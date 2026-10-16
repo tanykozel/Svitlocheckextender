@@ -2,7 +2,8 @@
 
 import unittest
 
-from svitlo_notifier.bot import Bot, BotState, Subscription, house_key, parse_houses, resolve_queue, similar
+from svitlo_notifier.bot import (Bot, BotState, Subscription, house_key, house_options, parse_houses, resolve_queue,
+                                 similar)
 from svitlo_notifier.cache import ScheduleCache
 from tests.test_bot import FakeDirectory
 
@@ -35,9 +36,15 @@ class HouseNumberTests(unittest.TestCase):
     def test_house_87_is_found_in_queue_3_2(self):
         self.assertEqual(resolve_queue(PARADZHANOVA, "87"), (3, 2))
 
-    def test_hyphens_and_spaces_do_not_matter(self):
-        self.assertEqual(house_key("85-А"), house_key("85 а"))
-        self.assertEqual(resolve_queue(PARADZHANOVA, "85А"), (3, 2), "the 0.0 duplicate is ignored")
+    def test_house_is_matched_as_zteo_writes_it(self):
+        self.assertNotEqual(house_key("85-А"), house_key("85 а"), "a different spelling is offered, not taken")
+        self.assertEqual(resolve_queue(PARADZHANOVA, "85-А"), (3, 2), "the 0.0 duplicate is ignored")
+        self.assertEqual(resolve_queue(PARADZHANOVA, "85А"), "missing")
+
+    def test_similar_spellings_are_suggested(self):
+        for typed in ("85а", "85 а", "85А", "85"):
+            self.assertEqual(house_options(PARADZHANOVA, typed), ["85-А"], typed)
+        self.assertEqual(house_options(PARADZHANOVA, "8"), [], "«8» never suggests «87» or «85-А»")
 
     def test_households_still_work(self):
         self.assertEqual(resolve_queue(PARADZHANOVA, "12"), (5, 1))
@@ -98,6 +105,26 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_text(5, "87")
         sub = self.state.subs["5"]
         self.assertEqual((sub.queue, sub.subqueue), (3, 2))
+
+    def test_house_spelt_differently_must_be_confirmed(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "85а")
+        text, buttons = self.sent[-1]
+        self.assertIn("Це будинок «85-А»?", text)
+        self.assertEqual(buttons, [[("85-А", "h:0")]])
+        self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before the tap")
+        self.bot.handle_button(5, "h:0")
+        sub = self.state.subs["5"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.house), (3, 2, "85-а"))
+
+    def test_house_written_as_listed_is_taken_at_once(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "85-а")
+        self.assertEqual(self.state.subs["5"].queue, 3)
+
+    def test_old_house_button_is_ignored(self):
+        self.bot.handle_button(5, "h:0")
+        self.assertEqual(self.state.subs["5"].queue, 4)
 
     def test_typo_offers_the_right_street(self):
         self.bot.handle_text(5, "Паражанова")
