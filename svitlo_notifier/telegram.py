@@ -55,6 +55,15 @@ def send_message(
     return result.get("message_id") if isinstance(result, dict) else None
 
 
+def delete_message(token: str, chat_id: int, message_id: int) -> bool:
+    """Delete a message in a private chat (the bot's own or the user's). Telegram allows it only while the
+    message is less than 48 hours old. Best effort."""
+    try:
+        return bool(_call(token, "deleteMessage", {"chat_id": chat_id, "message_id": message_id}))
+    except TelegramError:
+        return False
+
+
 def remove_buttons(token: str, chat_id: int, message_id: int) -> None:
     """Take the buttons off an older message so they can't be tapped any more. Best effort."""
     try:
