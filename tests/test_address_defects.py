@@ -174,6 +174,17 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_text(5, "вул. Сергія Параджанова")
         self.assertIn("4/4", self.last())
 
+    def test_typed_street_is_confirmed_with_its_official_name(self):
+        # owner, 19.10: «Лесі Українки» typed at 3/4 left no ✅, unlike a tapped answer
+        self.bot.handle_text(5, "Параджанова")  # partial: asked first, then tapped
+        self.bot.handle_button(5, "s:174365")
+        self.assertFalse(self.last().startswith("✅"), "a tap is marked on its question, not repeated")
+        self.state.sessions["5"] = {"step": "street", "rem": "7", "city": "16657", "city_name": "місто Житомир"}
+        self.bot.handle_text(5, "вул. сергія параджанова")
+        self.assertTrue(self.last().startswith("✅ вул. Сергія Параджанова\n4/4."), self.last())
+        self.bot.handle_text(5, "Сквира")  # no echo leaks into an unrelated message later
+        self.assertFalse(self.last().startswith("✅ вул. Сергія"))
+
 
 class OldButtonTests(unittest.TestCase):
     """Tapping «місто Житомир» twice sent two «3/4», the second with an empty town name."""
