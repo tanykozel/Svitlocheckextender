@@ -117,6 +117,15 @@ def listed_houses(rows: list[dict]) -> list[str]:
     return list(seen.values())
 
 
+MAX_HOUSE_BUTTONS = 24
+
+
+def house_sort_key(house: str) -> tuple[int, str]:
+    """«3» < «5» < «22/20» < «85-А» (by number, then the rest)."""
+    number = re.match(r"\d+", house)
+    return (int(number.group()) if number else 10**6, house)
+
+
 def house_options(rows: list[dict], typed: str) -> list[str]:
     """Listed numbers that look like what was typed: «85а» or «85 а» -> ['85-А']; «85» -> ['85-А', '85/1']."""
     want = _loose(typed)
@@ -618,7 +627,7 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str, message: dict | None = None) -> None:
         kind, _, value = data.partition(":")
-        expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house"}.get(kind)
+        expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house", "n": "house"}.get(kind)
         if expected:
             if self.state.sessions.get(str(chat_id), {}).get("step") != expected:
                 # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
@@ -643,6 +652,8 @@ class Bot:
             self.house_chosen(chat_id, value)
         elif kind == "t":
             self.kind_chosen(chat_id, value)
+        elif kind == "n":
+            self.house_help(chat_id, value)
 
     # quiz steps ------------------------------------------------------------------------
 
@@ -840,8 +851,36 @@ class Bot:
             self.subscribe(chat_id, 0, 0, self._label(session), street_id=session["street"], house=wanted)
             return
         self.stats["outcome:not_found"] += 1
-        self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
-                  None)
+        session["typed_house"] = text.strip()
+        # Owner, 19.10: not just "try again" - a corner house may be listed under the other street, or the number
+        # written differently («22/20»). Never a neighbour's number: neighbours can be in a different queue.
+        self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Можливо, будинок записаний під "
+                           "іншою вулицею (кутовий будинок) або під іншим номером. Перевір номер і напиши ще раз або:",
+                  [[("Показати номери на цій вулиці", "n:list")], [("Обрати іншу вулицю", "n:street")]])
+
+    def house_help(self, chat_id: int, choice: str) -> None:
+        session = self._session(str(chat_id))
+        if choice == "list":
+            houses = listed_houses(self.dir.addresses(session["street"]))
+            typed = re.match(r"\d+", session.get("typed_house", ""))
+            if len(houses) > MAX_HOUSE_BUTTONS and typed:  # a long street: the numbers closest to what was typed
+                def distance(house: str) -> int:
+                    number = re.match(r"\d+", house)
+                    return abs(int(number.group()) - int(typed.group())) if number else 10**6
+                houses = sorted(sorted(houses, key=distance)[:MAX_HOUSE_BUTTONS], key=house_sort_key)
+            else:
+                houses = sorted(houses, key=house_sort_key)[:MAX_HOUSE_BUTTONS]
+            session["houses"] = houses
+            self.send(chat_id, "Номери, які Житомиробленерго має для цієї вулиці - обери свій або напиши номер:",
+                      [[(h[:30], f"h:{i}") for i, h in enumerate(houses[j:j + 4], j)]
+                       for j in range(0, len(houses), 4)])
+        elif choice == "street":
+            if not session.get("city"):  # the house was asked after a street split: no town in this session
+                self.send(chat_id, "Щоб обрати іншу вулицю, надішли /change.", None)
+                return
+            city_name = session.get("city_name", "")
+            session.update({"step": "street", "names": {session["city"]: city_name}})
+            self.city_chosen(chat_id, session["city"])
 
     def _pick(self, chat_id: int, found: list[dict], prefix: str, chosen: Callable[[int, str], None], what: str,
               options: list[dict] | None = None, query: str = "") -> None:
