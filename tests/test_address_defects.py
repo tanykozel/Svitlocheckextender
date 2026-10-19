@@ -93,11 +93,51 @@ class QuizFlowTests(unittest.TestCase):
         self.assertTrue(buttons)
         self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before confirming")
 
-    def test_address_without_a_queue_keeps_the_previous_one(self):
+    def test_street_without_a_queue_still_asks_for_the_house(self):
+        # owner, 19.10: 0.0 is never taken silently - the house decides
         self.bot.handle_button(5, "s:176608")
-        self.assertIn("не вказує черги", self.last())
+        self.assertIn("4/4", self.last())
         self.assertEqual((self.state.subs["5"].queue, self.state.subs["5"].subqueue), (4, 2))
-        self.assertNotIn("5", self.state.sessions)
+
+    def test_house_without_a_queue_is_followed(self):
+        # owner, 19.10: 0.0 addresses can be followed; the house was matched exactly
+        self.bot.handle_button(5, "s:176608")
+        self.bot.handle_text(5, "1")
+        sub = self.state.subs["5"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.street_id, sub.house), (0, 0, "176608", "1"))
+        self.assertIn("в цей час не вимикається", self.last())
+        self.assertIn("щойно з'явиться черга", self.last())
+
+    def test_0_0_is_never_taken_for_an_unmatched_address(self):
+        self.bot.handle_text(5, "Неіснуюча")  # no such street: nothing is offered or taken
+        self.assertIn("Не знайшла", self.last())
+        self.assertEqual(self.state.subs["5"].queue, 4)
+        self.state.sessions["5"] = {"step": "house", "street": "176608", "city_name": "місто Житомир",
+                                    "street_name": "автошлях Житомир - Сквира"}
+        self.bot.handle_text(5, "999")  # a house ZTOE does not list
+        self.assertIn("Не знайшла будинок «999»", self.last())
+        self.assertEqual((self.state.subs["5"].queue, self.state.subs["5"].subqueue), (4, 2), "nothing taken")
+
+    def test_followed_0_0_address_gets_no_alerts_and_hears_when_a_queue_appears(self):
+        from datetime import datetime, timedelta
+        from svitlo_notifier.schedule import KYIV
+        self.bot.handle_button(5, "s:176608")
+        self.bot.handle_text(5, "1")
+        sub = self.state.subs["5"]
+        self.bot.handle_text(5, "/schedule")
+        self.assertIn("в цей час не вимикається", self.last())
+        ROAD[0]["cherga"], ROAD[0]["pidcherga"] = 3, 1  # ZTOE assigns a queue later
+        try:
+            self.bot.refresh_queues(datetime.now(KYIV) + timedelta(hours=3))
+        finally:
+            ROAD[0]["cherga"], ROAD[0]["pidcherga"] = 0, 0
+        self.assertEqual((sub.queue, sub.subqueue), (3, 1))
+        self.assertIn("призначило чергу 3.1", self.last())
+
+    def test_business_only_house_with_0_0_is_followed_too(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "45")
+        self.assertEqual(self.state.subs["5"].queue, 0)
 
     def test_house_87_subscribes_to_3_2(self):
         self.bot.handle_button(5, "s:174365")
