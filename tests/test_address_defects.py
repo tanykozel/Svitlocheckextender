@@ -147,6 +147,50 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_text(5, "45")
         self.assertEqual(self.state.subs["5"].queue, 0)
 
+    def test_unknown_house_offers_a_way_forward(self):
+        # owner, 19.10: a house ZTOE does not list - not only "try again"
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "15")
+        text, buttons = self.sent[-1]
+        self.assertIn("кутовий будинок", text)
+        self.assertEqual([row[0][1] for row in buttons], ["n:list", "n:street"])
+        self.assertEqual(self.state.subs["5"].queue, 4, "nothing taken")
+
+    def test_house_list_shows_zteo_numbers_and_a_tap_subscribes(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "15")
+        self.bot.handle_button(5, "n:list")
+        text, buttons = self.sent[-1]
+        labels = [label for row in buttons for label, _ in row]
+        self.assertEqual(labels[:4], ["10", "12", "45", "67А"])
+        self.assertNotIn("15", labels, "never a number ZTOE does not list")
+        data = dict((label, d) for row in buttons for label, d in row)
+        self.bot.handle_button(5, data["87"])
+        self.assertEqual((self.state.subs["5"].queue, self.state.subs["5"].subqueue), (3, 2))
+
+    def test_long_street_shows_the_numbers_closest_to_the_typed_one(self):
+        rows = [{"id": "1", "cherga": 1, "pidcherga": 1,
+                 "name": ", ".join(f"{n} - побутові споживачі" for n in range(1, 61))},
+                {"id": "2", "cherga": 2, "pidcherga": 1, "name": "62 - побутові споживачі"}]  # two queues
+        self.dir.addresses = lambda street_id: rows
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "70")
+        self.assertIn("кутовий", self.last())
+        self.bot.handle_button(5, "n:list")
+        labels = [label for row in self.sent[-1][1] for label, _ in row]
+        self.assertEqual(len(labels), 24)
+        self.assertIn("62", labels)
+        self.assertNotIn("1", labels, "far numbers are left out of a long list")
+
+    def test_other_street_goes_back_to_step_3(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "15")
+        self.bot.handle_button(5, "n:street")
+        self.assertIn("3/4. місто Житомир", self.last())
+        self.assertEqual(self.state.sessions["5"]["step"], "street")
+        self.bot.handle_text(5, "вул. Сергія Параджанова")
+        self.assertIn("4/4", self.last())
+
     def test_house_87_subscribes_to_3_2(self):
         self.bot.handle_button(5, "s:174365")
         self.assertIn("4/4", self.last())
