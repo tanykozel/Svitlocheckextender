@@ -46,6 +46,14 @@ class HouseNumberTests(unittest.TestCase):
             self.assertEqual(house_options(PARADZHANOVA, typed), ["85-А"], typed)
         self.assertEqual(house_options(PARADZHANOVA, "8"), [], "«8» never suggests «87» or «85-А»")
 
+    def test_latin_letters_and_unlisted_letters_are_suggested(self):
+        # owner, 19.10: house typos get the official number to confirm, like streets
+        self.assertEqual(house_options(PARADZHANOVA, "85a"), ["85-А"], "Latin a")
+        self.assertEqual(house_options(PARADZHANOVA, "67A"), ["67А"], "Latin A")
+        self.assertEqual(house_options(PARADZHANOVA, "87б"), ["87"], "a letter ZTOE does not list")
+        self.assertEqual(house_options(PARADZHANOVA, "12/1"), ["12"], "a fraction ZTOE does not list")
+        self.assertEqual(house_options(PARADZHANOVA, "999"), [])
+
     def test_households_still_work(self):
         self.assertEqual(resolve_queue(PARADZHANOVA, "12"), (5, 1))
         self.assertEqual(resolve_queue(PARADZHANOVA, "67а"), (3, 2))

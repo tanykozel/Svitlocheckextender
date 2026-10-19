@@ -79,9 +79,12 @@ def house_key(text: str) -> str:
     return normalize(text).replace(" ", "")
 
 
+_LATIN = str.maketrans("abcehikmoptxy", "авсеніктортху")  # Latin letters typed on an English keyboard
+
+
 def _loose(text: str) -> str:
-    """For suggestions only: '85 а', '85а' and '85-А' look alike."""
-    return re.sub(r"[\s\-]", "", normalize(text))
+    """For suggestions only: '85 а', '85а', '85a' (Latin a) and '85-А' look alike."""
+    return re.sub(r"[\s\-]", "", normalize(text)).translate(_LATIN)
 
 
 def _house_parts(raw: str) -> list[tuple[str, bool]]:
@@ -123,7 +126,13 @@ def house_options(rows: list[dict], typed: str) -> list[str]:
     same = [h for h in listed if _loose(h) == want]
     longer = [h for h in listed if h not in same and _loose(h).startswith(want)
               and not _loose(h)[len(want)].isdigit()]  # «85» suggests «85-А», never «850»
-    return same + longer
+    if same or longer:
+        return same + longer
+    # A letter or fraction ZTOE does not list: «87а» or «12/1» suggests «87» / «12» and its lettered neighbours
+    number = re.match(r"\d+", want)
+    if not number:
+        return []
+    return [h for h in listed if re.match(r"\d+", _loose(h)) and re.match(r"\d+", _loose(h)).group() == number.group()]
 
 
 def house_numbers(raw: str) -> list[str]:
