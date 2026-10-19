@@ -93,11 +93,47 @@ class QuizFlowTests(unittest.TestCase):
         self.assertTrue(buttons)
         self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before confirming")
 
-    def test_address_without_a_queue_keeps_the_previous_one(self):
+    def test_street_without_a_queue_still_asks_for_the_house(self):
+        # owner, 19.10: 0.0 is never taken silently - the house decides
         self.bot.handle_button(5, "s:176608")
-        self.assertIn("не вказує черги", self.last())
+        self.assertIn("4/4", self.last())
+        self.assertEqual((self.state.subs["5"].queue, self.state.subs["5"].subqueue), (4, 2))
+
+    def test_house_without_a_queue_offers_to_watch_and_no_keeps_the_previous_address(self):
+        self.bot.handle_button(5, "s:176608")
+        self.bot.handle_text(5, "1")
+        text, buttons = self.sent[-1]
+        self.assertIn("не входить у графіки планових відключень", text)
+        self.assertEqual([b[1] for b in buttons[0]], ["w:yes", "w:no"])
+        self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before the tap")
+        self.bot.handle_button(5, "w:no")
         self.assertEqual((self.state.subs["5"].queue, self.state.subs["5"].subqueue), (4, 2))
         self.assertNotIn("5", self.state.sessions)
+
+    def test_watched_address_gets_no_alerts_and_hears_when_a_queue_appears(self):
+        from datetime import datetime, timedelta
+        from svitlo_notifier.schedule import KYIV
+        self.bot.handle_button(5, "s:176608")
+        self.bot.handle_text(5, "1")
+        self.bot.handle_button(5, "w:yes")
+        sub = self.state.subs["5"]
+        self.assertEqual((sub.queue, sub.subqueue, sub.street_id, sub.house), (0, 0, "176608", "1"))
+        self.assertIn("перевіряю адресу кожні 2 години", self.last())
+        self.bot.handle_text(5, "/schedule")
+        self.assertIn("не входить у графіки", self.last())
+        ROAD[0]["cherga"], ROAD[0]["pidcherga"] = 3, 1  # ZTOE assigns a queue later
+        try:
+            self.bot.refresh_queues(datetime.now(KYIV) + timedelta(hours=3))
+        finally:
+            ROAD[0]["cherga"], ROAD[0]["pidcherga"] = 0, 0
+        self.assertEqual((sub.queue, sub.subqueue), (3, 1))
+        self.assertIn("призначило чергу 3.1", self.last())
+
+    def test_business_only_house_with_0_0_offers_to_watch(self):
+        self.bot.handle_button(5, "s:174365")
+        self.bot.handle_text(5, "45")
+        self.assertIn("«45»", self.last())
+        self.assertIn("стежитиму", self.last())
 
     def test_house_87_subscribes_to_3_2(self):
         self.bot.handle_button(5, "s:174365")
