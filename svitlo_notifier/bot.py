@@ -420,9 +420,6 @@ def split_street_text(sub: "Subscription", rows: list[dict]) -> str:
             f"Поки що попереджаю за чергою {sub.queue}.{sub.subqueue}, але вона може бути неточною.")
 
 
-NO_QUEUE_WATCH = ("За даними Житомиробленерго, будинок «{house}» ({label}) в цей час не вимикається, за винятком "
-                  "випадків аварійних відключень - черги для нього немає 💡\n"
-                  "Хочеш, я стежитиму за цією адресою й повідомлю, щойно для неї з'явиться черга?")
 # ZTOE's own wording for 0.0 on its address search page (owner's screenshot, 19.10)
 WATCHING = ("за даними Житомиробленерго, в цей час не вимикається, за винятком випадків аварійних відключень - "
             "черги немає 💡 Я перевіряю адресу кожні 2 години й повідомлю, щойно з'явиться черга.")
@@ -612,7 +609,7 @@ class Bot:
 
     def handle_button(self, chat_id: int, data: str, message: dict | None = None) -> None:
         kind, _, value = data.partition(":")
-        expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house", "w": "house"}.get(kind)
+        expected = {"r": "rem", "c": "city", "s": "street", "h": "house", "t": "house"}.get(kind)
         if expected:
             if self.state.sessions.get(str(chat_id), {}).get("step") != expected:
                 # A button from an earlier step (tapped twice, or an old message): it must not restart a step.
@@ -637,8 +634,6 @@ class Bot:
             self.house_chosen(chat_id, value)
         elif kind == "t":
             self.kind_chosen(chat_id, value)
-        elif kind == "w":
-            self.watch_chosen(chat_id, value)
 
     # quiz steps ------------------------------------------------------------------------
 
@@ -801,18 +796,6 @@ class Bot:
             return
         self._house_found(chat_id, self.dir.addresses(session["street"]), options[int(index)], options[int(index)])
 
-    def watch_chosen(self, chat_id: int, answer: str) -> None:
-        session = self._session(str(chat_id))
-        house = session.get("watch_house")
-        if not house:
-            return
-        if answer == "yes":
-            self.stats["outcome:no_queue_watch"] += 1
-            self.subscribe(chat_id, 0, 0, self._label(session), street_id=session["street"], house=house)
-        else:
-            self.state.sessions.pop(str(chat_id), None)  # the previous address (if any) stays as it was
-            self.send(chat_id, "Добре 👌 Захочеш обрати іншу адресу - надішли /change.", None)
-
     def kind_chosen(self, chat_id: int, kind: str) -> None:
         session = self._session(str(chat_id))
         if kind not in ("home", "business") or not session.get("house"):
@@ -842,12 +825,10 @@ class Bot:
                            street_id=session["street"], house=wanted)
             return
         if found == "no_queue":
-            # ZTOE lists this house without an outage queue (0.0). Owner, 19.10: say so plainly and offer to watch
-            # it, so the person hears the day a queue is assigned (the 2-hourly address re-check sees it).
+            # The house was matched exactly (or confirmed by a tap) and ZTOE lists it without a queue (0.0).
+            # Owner, 19.10: follow it anyway - the 2-hourly address re-check tells the person the day a queue appears.
             self.stats["outcome:no_queue"] += 1
-            session["watch_house"] = wanted
-            self.send(chat_id, NO_QUEUE_WATCH.format(label=self._label(session), house=listed),
-                      [[("👀 Так, стеж", "w:yes"), ("Ні, дякую", "w:no")]])
+            self.subscribe(chat_id, 0, 0, self._label(session), street_id=session["street"], house=wanted)
             return
         self.stats["outcome:not_found"] += 1
         self.send(chat_id, f"Не знайшла будинок «{text.strip()}» на цій вулиці 🤔 Перевір номер і напиши ще раз.",
