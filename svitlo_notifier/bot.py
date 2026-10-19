@@ -453,6 +453,7 @@ class Bot:
         self._send = send
         self._unbutton = unbutton
         self._show_choice = show_choice
+        self._echo: dict[str, str] = {}  # chat -> «✅ official name» to put on top of the next message
         self._delete = delete
         self.state = state
         # Aggregate counters for the owner dashboard ("request:/start", "failure:ztoe", ...). No chat ids.
@@ -502,6 +503,8 @@ class Bot:
     def send(self, chat_id: int, text: str, buttons: Buttons | None) -> None:
         """Send a message. A new set of buttons retires the previous one, so only the latest can be tapped."""
         chat = str(chat_id)
+        if chat in self._echo:
+            text = f"{self._echo.pop(chat)}\n{text}"
         if buttons and chat in self.state.keyboards:
             self._unbutton(chat_id, self.state.keyboards.pop(chat))
         message_id = self._send(chat_id, text, buttons)
@@ -857,7 +860,13 @@ class Bot:
                 return
         if len(found) == 1:
             session.setdefault("names", {})[str(found[0]["id"])] = name_of(found[0])
-            chosen(chat_id, str(found[0]["id"]))
+            # Typed, not tapped: the next message starts with the official name taken, as a tapped answer shows
+            # «✅ …» under its question (owner, 19.10: «Лесі Українки» → «✅ вул. Лесі Українки»).
+            self._echo[str(chat_id)] = f"✅ {name_of(found[0])}"
+            try:
+                chosen(chat_id, str(found[0]["id"]))
+            finally:
+                self._echo.pop(str(chat_id), None)
         elif not found:
             self.stats["outcome:not_found"] += 1
             hint = ("\nБагато вулиць перейменовано, а база Житомиробленерго знає лише нові назви. "
