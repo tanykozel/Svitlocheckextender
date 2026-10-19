@@ -103,7 +103,7 @@ class QuizFlowTests(unittest.TestCase):
         self.bot.handle_button(5, "s:176608")
         self.bot.handle_text(5, "1")
         text, buttons = self.sent[-1]
-        self.assertIn("не входить у графіки планових відключень", text)
+        self.assertIn("в цей час не вимикається, за винятком випадків аварійних відключень", text)
         self.assertEqual([b[1] for b in buttons[0]], ["w:yes", "w:no"])
         self.assertEqual(self.state.subs["5"].queue, 4, "nothing changed before the tap")
         self.bot.handle_button(5, "w:no")
@@ -120,7 +120,7 @@ class QuizFlowTests(unittest.TestCase):
         self.assertEqual((sub.queue, sub.subqueue, sub.street_id, sub.house), (0, 0, "176608", "1"))
         self.assertIn("перевіряю адресу кожні 2 години", self.last())
         self.bot.handle_text(5, "/schedule")
-        self.assertIn("не входить у графіки", self.last())
+        self.assertIn("в цей час не вимикається", self.last())
         ROAD[0]["cherga"], ROAD[0]["pidcherga"] = 3, 1  # ZTOE assigns a queue later
         try:
             self.bot.refresh_queues(datetime.now(KYIV) + timedelta(hours=3))
