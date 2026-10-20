@@ -85,7 +85,7 @@ class AlertTests(unittest.TestCase):
         self.power.records = [record(317818499, "1, 11, 12, 13")]
         self.assertEqual(self.check(), 1)
         self.assertEqual(self.sent[-1][1], "⚡ Аварійне відключення на твоїй адресі (с. Улянівка, вул. Молодіжна): "
-                                            "з 20.10 12:48 до 21.10 09:00 (очікуване ввімкнення).")
+                                            "з 20.10 12:48 до 21.10 09:00.")
         self.assertEqual(self.check(10), 0, "the same emergency is not repeated")
 
     def test_changed_interval_shows_the_whole_new_interval(self):
@@ -93,7 +93,7 @@ class AlertTests(unittest.TestCase):
         self.check()
         self.power.records = [record(317818499, "12", until="2026-10-21T08:00:00+00:00")]
         self.check(10)
-        self.assertIn("змінено: з 20.10 12:48 до 21.10 11:00 (очікуване ввімкнення)", self.sent[-1][1])
+        self.assertIn("змінено: з 20.10 12:48 до 21.10 11:00.", self.sent[-1][1])
 
     def test_end_is_not_announced(self):
         self.power.records = [record(317818499, "12")]

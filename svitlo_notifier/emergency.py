@@ -126,7 +126,7 @@ def emergencies(records: list[dict]) -> list[Emergency]:
 def interval(e: Emergency) -> str:
     start = e.start.strftime("%d.%m %H:%M")
     until = e.until.strftime("%d.%m %H:%M") if e.until else "невідомо"
-    return f"з {start} до {until} (очікуване ввімкнення)"
+    return f"з {start} до {until}"
 
 
 def new_text(label: str, e: Emergency) -> str:
