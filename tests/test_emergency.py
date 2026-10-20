@@ -66,6 +66,13 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(link_address(client, "", "Андрушівка", "вул. Молодіжна"), "", "twin town: never guess")
         self.assertEqual(link_address(client, "Романівський", "Улянівка", "вул. Невідома"), "")
 
+    def test_street_kind_must_match_when_two_kinds_share_a_name(self):
+        client = FakePowerOn()
+        client.streets = lambda city_id: [{"id": 1, "name": "вул. Сергія Остапенка"},
+                                          {"id": 2, "name": "пров. Сергія Остапенка"}]
+        self.assertEqual(link_address(client, "Романівський", "Улянівка", "пров Сергія Остапенка"), "16|390|2")
+        self.assertEqual(link_address(client, "Романівський", "Улянівка", "вул. Сергія Остапенка"), "16|390|1")
+
 
 class AlertTests(unittest.TestCase):
     def setUp(self):

@@ -66,6 +66,16 @@ class PowerOnClient:
         return items
 
 
+_KINDS = (("вул", ("вул", "вулиця")), ("пров", ("пров", "провулок")), ("просп", ("просп", "проспект")),
+          ("пл", ("пл", "площа")), ("бульв", ("бул", "бульв", "бульвар")))
+
+
+def street_kind(name: str) -> str:
+    """«пров Сергія Остапенка» and «провулок Сергія Остапенка» are both a «пров»; «вул.» is a different street."""
+    first = re.split(r"[.\s]", name.lower().strip(), maxsplit=1)[0]
+    return next((kind for kind, words in _KINDS if first in words), "")
+
+
 def plain(name: str) -> str:
     """«місто Житомир» = «Житомир», «вул. Лук'яненка» = «вул. Лукʼяненка»: compared without prefixes and case."""
     name = name.lower().replace("’", "'").replace("ʼ", "'").replace("`", "'")
@@ -86,7 +96,10 @@ def link_address(client: PowerOnClient, rem_name: str, city_name: str, street_na
     if len(cities) != 1:
         return ""  # unknown, or the same village name in several districts: never guess
     city = cities[0]
-    streets = [s for s in client.streets(city["id"]) if plain(str(s.get("name", ""))) == plain(street_name)]
+    same_name = [s for s in client.streets(city["id"]) if plain(str(s.get("name", ""))) == plain(street_name)]
+    # «вул.» and «пров» of the same name are different streets: the kind must match when both are known
+    streets = [s for s in same_name if street_kind(str(s.get("name", ""))) == street_kind(street_name)] or (
+        same_name if len(same_name) == 1 else [])
     if len(streets) != 1:
         return ""
     return f"{otg_id}|{city['id']}|{streets[0]['id']}"
