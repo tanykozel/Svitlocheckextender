@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .api import ApiError, GpvClient
+from .emergency import PowerOnClient
 from .cache import ScheduleCache, start_refresher
 from .metrics import merge_from_files
 from .ntfy import NtfyError, send_push
@@ -219,7 +220,9 @@ def cmd_bot(args: argparse.Namespace) -> int:
     bot = Bot(directory, lambda chat, text, buttons: send_message(token, chat, text, buttons=buttons), state,
               unbutton=lambda chat, message: remove_buttons(token, chat, message),
               delete=lambda chat, message: delete_message(token, chat, message),
-              show_choice=lambda chat, message, text: show_choice(token, chat, message, text))
+              show_choice=lambda chat, message, text: show_choice(token, chat, message, text),
+              emergency=PowerOnClient() if args.forever else None)
+    bot.emergency_every = timedelta(minutes=args.emergency_every)
 
     def read_and_answer(wait: int) -> int:
         try:
@@ -245,6 +248,7 @@ def cmd_bot(args: argparse.Namespace) -> int:
         now = datetime.now(KYIV)
         moved += bot.refresh_queues(now)
         sent += bot.send_alerts(now, is_gone=_telegram_gone)
+        sent += bot.check_emergencies(now)
         bot.watch_all_queues(now)
         bot.clean_chats()  # messages older than ~2 days disappear from the chats
         _write_json(path, state.to_dict())
@@ -443,6 +447,9 @@ def build_parser() -> argparse.ArgumentParser:
     bot.add_argument("--metrics-every", type=float, default=10, help="with --forever: window length in minutes")
     bot.add_argument("--ztoe-every", type=float, default=float(os.environ.get("SVITLO_ZTOE_EVERY_MINUTES") or 10),
                      help="with --forever: read the ZTOE schedules every N minutes in the background (default 10)")
+    bot.add_argument("--emergency-every", type=float,
+                     default=float(os.environ.get("SVITLO_EMERGENCY_EVERY_MINUTES") or 10),
+                     help="with --forever: check emergency outages for subscribers' streets every N minutes (10)")
     bot.set_defaults(func=cmd_bot)
 
     dash = sub.add_parser("metrics-merge", help="add a bot run's numbers to the dashboard data files")
