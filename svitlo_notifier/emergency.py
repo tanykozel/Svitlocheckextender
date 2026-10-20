@@ -144,8 +144,8 @@ def interval(e: Emergency) -> str:
 
 
 def new_text(label: str, e: Emergency) -> str:
-    return f"⚡ Нове аварійне відключення на твоїй адресі ({label}): {interval(e)}."
+    return f"⚡🔴 Нове аварійне відключення на твоїй адресі ({label}): {interval(e)}."
 
 
 def changed_text(label: str, e: Emergency) -> str:
-    return f"⚡ Аварійне відключення на твоїй адресі ({label}) змінено: {interval(e)}."
+    return f"⚡🔴 Аварійне відключення на твоїй адресі ({label}) змінено: {interval(e)}."
