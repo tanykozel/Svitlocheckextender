@@ -1,26 +1,22 @@
-"""One-off (temporary): do real subscriber-style addresses link to ZTOE's emergency service? Public data only."""
+"""One-off (temporary): how the emergency service writes the unmatched names. Public data only."""
 
 import time
 
-from svitlo_notifier.api import GpvClient
-from svitlo_notifier.bot import name_of
-from svitlo_notifier.emergency import PowerOnClient, emergencies, link_address
+from svitlo_notifier.emergency import PowerOnClient, plain
 
-gpv, power = GpvClient(timeout=90), PowerOnClient(timeout=90)
-rems = {str(r["id"]): name_of(r) for r in gpv.rems()}
-print("GPV districts:", sorted(rems.values())[:30])
-print("Emergency-service districts:", sorted(o.get("name") for o in power.otgs())[:30])
-cases = [("7", "місто Житомир", "вул. Сергія Параджанова"), ("7", "місто Житомир", "вул. Вітрука"),
-         ("16", "м. Звягель", "вул. Левка Лук'яненка"), ("16", "с. Сусли", "вул. Гранітна"),
-         ("7", "місто Житомир", "пров Сергія Остапенка")]
-for rem_id, city, street in cases:
-    time.sleep(2)
-    try:
-        link = link_address(power, rems.get(rem_id, ""), city, street)
-    except Exception as exc:  # noqa: BLE001
-        link = f"error {exc}"
-    print(f"{rems.get(rem_id)} | {city} | {street} -> {link or 'NO MATCH'}")
-    if link and "|" in link:
+power = PowerOnClient(timeout=90)
+otg = next(o for o in power.otgs() if "Звягель" in str(o.get("name")))
+cities = power.cities(otg["id"])
+print("Звягельський РЕМ cities matching звяг/сусл/новоград:",
+      [c["name"] for c in cities if any(w in plain(c["name"]) for w in ("звяг", "сусл", "новоград"))])
+for c in cities:
+    if any(w in plain(c["name"]) for w in ("звяг", "сусл", "новоград")):
         time.sleep(2)
-        found = emergencies(power.accidents(*link.split("|")))
-        print("   current emergencies on this street:", [(e.start.isoformat(), e.houses[:5]) for e in found])
+        streets = power.streets(c["id"])
+        print(f"  {c['name']}: {len(streets)} streets; matches:",
+              [s["name"] for s in streets if any(w in plain(s["name"]) for w in ("лук", "гранітн"))])
+time.sleep(2)
+zh = next(c for c in power.cities(next(o for o in power.otgs() if "Житомирський" in str(o.get("name")))["id"])
+          if plain(c["name"]) == "житомир")
+time.sleep(2)
+print("Житомир streets with остапенк:", [s["name"] for s in power.streets(zh["id"]) if "остапенк" in plain(s["name"])])

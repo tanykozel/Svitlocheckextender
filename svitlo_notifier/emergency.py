@@ -22,7 +22,8 @@ from .api import ApiError, USER_AGENT
 from .schedule import KYIV
 
 BASE_URL = "https://api-ztoe-poweron.inneti.net/api/"
-_PREFIX = re.compile(r"^(м\.|місто|с\.|село|смт\.?|селище|сщ\.|вул\.|вулиця|пров\.|провулок|просп\.|пл\.|бульв?\.?)\s*")
+_PREFIX = re.compile(r"^(місто|селище|село|вулиця|провулок|проспект|площа|бульвар|"
+                     r"(?:м|с|смт|сщ|вул|пров|просп|пл|бульв?)(?:\.\s*|\s+))\s*")
 
 
 class PowerOnClient:
