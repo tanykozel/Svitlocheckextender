@@ -133,7 +133,12 @@ a { color: var(--series-1); }
   </section>
 
   <section>
-    <h2>4. Context: how often the schedule changes</h2>
+    <h2>4. Context: ZTOE</h2>
+    <h3>Emergency outages (аварійні відключення)</h3>
+    <p class="note">From ZTOE's «Чому немає світла?» data, checked every 10 min for subscribers' streets. Alerts go out for a new emergency at a subscriber's house and when its interval changes; nothing when it ends.</p>
+    <div class="tiles" id="em-tiles"></div>
+    <details><summary>Table: emergency alerts per day</summary><div class="table-wrap" id="t-em"></div></details>
+    <h3>How often the schedule changes</h3>
     <p class="note">Люся looks at her subscribers' queues every 10 min (before v0.4.1: all 12 queues every ~30 min). «Published» = a day's schedule appeared; «changed» = an already published day was edited.</p>
     <div class="controls"><div class="seg" id="period">
       <button type="button" data-p="day" aria-pressed="true">Per day</button>
@@ -177,6 +182,7 @@ const FAILURES = {
   telegram_read: ["serious", "Could not read messages from Telegram", "Usually a short Telegram hiccup. If it repeats every run, the token was revoked: put the new token in the TELEGRAM_BOT_TOKEN secret."],
   telegram_send: ["warning", "A message to a subscriber failed", "Retried automatically on the next run. Only act if it repeats for hours (Telegram outage)."],
   ztoe: ["serious", "ZTOE site did not answer", "Alerts resume by themselves when ztoe.com.ua is back. If it lasts many hours, the ZTOE API may have changed: check the «Find my queue» workflow."],
+  ztoe_emergency: ["warning", "Emergency-outage check failed", "ZTOE's emergency data did not answer. Schedule alerts are not affected; the next check (10 min) catches up."],
   ztoe_watch: ["warning", "Schedule-change check failed", "Affects only section 3 of this dashboard; alerts are not affected."],
   bad_update: ["warning", "Unexpected Telegram message", "A message the bot could not read. Check the run log if it repeats."],
   chat_gone: ["good", "Someone blocked the bot", "Not an error: the person was unsubscribed automatically. Nothing to fix."],
@@ -596,7 +602,29 @@ function renderAlerts() {  // section 3: alerts about power off / on
     days.slice().reverse().map(([d, v]) => [d, v.alerts ? `${v.onTime} of ${v.alerts} (${pctText(v.alertShare)})` : "–", v.late, v.missed]));
 }
 
-function renderAll() { renderSubscribers(); renderService(); renderHealth(); renderAlerts(); renderDeploys(); renderSchedule(); }
+function renderEmergency() {  // section 4: emergency outages at subscribers' addresses
+  const last = [...history].reverse().find(r => typeof r.emergency_linked === "number");
+  const ranged = inRange(history);
+  const fresh = ranged.reduce((a, r) => a + (r.outcomes?.emergency_alert || 0), 0);
+  const changed = ranged.reduce((a, r) => a + (r.outcomes?.emergency_changed || 0), 0);
+  document.getElementById("em-tiles").innerHTML = [
+    tile("Subscribers in an emergency now", last ? last.emergency_now : "–", last ? `as of ${fmtShort(last.date)}` : "counted from the next run"),
+    tile("Emergency alerts sent", fresh, `new emergencies · ${changed} interval change(s) · in the selected range`),
+    tile("Addresses linked to ZTOE emergency data", last ? last.emergency_linked : "–",
+         last ? `${last.emergency_unmatched} not matched (no emergency alerts for them)` : "counted from the next run"),
+  ].join("");
+  const byDay = {};
+  history.forEach(r => {
+    const n = r.outcomes?.emergency_alert || 0, c = r.outcomes?.emergency_changed || 0;
+    if (!n && !c) return;
+    const b = byDay[dayKey(r.date)] ||= [0, 0]; b[0] += n; b[1] += c;
+  });
+  const rows = Object.keys(byDay).sort().reverse().slice(0, 30).map(k => [k.slice(8, 10) + "." + k.slice(5, 7), byDay[k][0], byDay[k][1]]);
+  document.getElementById("t-em").innerHTML = rows.length ? table(["Day", "New emergencies", "Interval changes"], rows)
+    : "<p>No emergency alerts yet.</p>";
+}
+
+function renderAll() { renderSubscribers(); renderService(); renderHealth(); renderAlerts(); renderDeploys(); renderSchedule(); renderEmergency(); }
 
 function wireSeg(id, attr, apply) {
   document.getElementById(id).addEventListener("click", e => {

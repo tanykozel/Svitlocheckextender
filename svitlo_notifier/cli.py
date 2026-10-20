@@ -378,6 +378,10 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
         "reply_waits": waits[-200:],
         "quizzes": len(bot.state.sessions),
         "address_problems": sum(1 for s in subs if s.problem),
+        # Emergency outages (numbers only): linked to ZTOE's emergency data / not matched / in an emergency now
+        "emergency_linked": sum(1 for s in subs if s.em_link and s.em_link != "-"),
+        "emergency_unmatched": sum(1 for s in subs if s.em_link == "-"),
+        "emergency_now": sum(1 for s in subs if s.em_sent),
         "by_queue": dict(sorted(by_queue.items())),
         "by_lead": dict(sorted(by_lead.items())),
         "processed": processed,
