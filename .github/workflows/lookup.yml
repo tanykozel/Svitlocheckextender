@@ -41,7 +41,9 @@ jobs:
           QUEUE: ${{ inputs.queue }}
           SUBQUEUE: ${{ inputs.subqueue }}
         run: |
-          if [ -n "$QUEUE" ]; then
+          if [ "$REM" = "probe" ]; then
+            PYTHONPATH=. python scripts/probe_ztoe.py
+          elif [ -n "$QUEUE" ]; then
             python -m svitlo_notifier status --queue "$QUEUE" --subqueue "${SUBQUEUE:-1}"
           elif [ -n "$STREET" ]; then
             python -m svitlo_notifier lookup --street "$STREET"
