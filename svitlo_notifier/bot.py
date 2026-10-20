@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
-from .emergency import PowerOnClient, changed_text, emergencies, link_address, new_text
+from .emergency import PowerOnClient, changed_text, emergencies, emergency_over, link_address, new_text
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, passed_events, plan,
                       schedule_text, summary)
 from .secure import chat_tag
@@ -1003,22 +1003,34 @@ class Bot:
             if found is None:
                 continue
             mine = [e for e in found if not sub.house or sub.house in {house_key(h) for h in e.houses}]
-            told = {}
+            # One message per emergency (owner's report 20.10: the same one came 3 times, every 10 min). ZTOE's
+            # reply is not stable: an emergency may come back under a new id, or be missing from one reply. So it
+            # is recognised by its start time too, and remembered until its end time, not until the next reply.
+            told = dict(sub.em_sent)
+            seen = {e.id for e in mine}
             for e in mine:
-                before = sub.em_sent.get(e.id)
-                told[e.id] = e.fingerprint()
-                if before == e.fingerprint():
+                fp = e.fingerprint()
+                before = told.get(e.id)
+                if before is None:
+                    renamed = [k for k, v in told.items() if k not in seen and v.split("|")[0] == fp.split("|")[0]]
+                    before = told[renamed[0]] if renamed else None
+                    for k in renamed:
+                        told.pop(k)
+                if before == fp or (before is None and fp in told.values()):  # nothing new to say
+                    told[e.id] = fp
                     continue
                 text = (new_text if before is None else changed_text)(sub.label, e)
                 try:
                     self.send(int(chat), text, None)
                 except Exception as exc:  # noqa: BLE001 - delivery problems are handled with the alerts
                     print(f"warning: emergency alert to {chat_tag(chat)} failed: {type(exc).__name__}")
-                    told[e.id] = before or ""
+                    if before is not None:
+                        told[e.id] = before
                     continue
+                told[e.id] = fp
                 sent += 1
                 self.stats["outcome:emergency_alert" if before is None else "outcome:emergency_changed"] += 1
-            sub.em_sent = {k: v for k, v in told.items() if v}  # an ended emergency is forgotten, not announced
+            sub.em_sent = {k: v for k, v in told.items() if not emergency_over(v, now)}  # never announced as ended
         return sent
 
     def _link_emergency(self, sub: Subscription, now: datetime) -> bool:

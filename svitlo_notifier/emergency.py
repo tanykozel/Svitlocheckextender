@@ -15,7 +15,7 @@ import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from .api import ApiError, USER_AGENT
@@ -127,6 +127,15 @@ class Emergency:
 
     def fingerprint(self) -> str:
         return f"{self.start.isoformat()}|{self.until.isoformat() if self.until else ''}"
+
+
+def emergency_over(fingerprint: str, now: datetime) -> bool:
+    """Past its expected end (or, with no end given, two days after its start): safe to forget."""
+    start, _, until = fingerprint.partition("|")
+    try:
+        return (datetime.fromisoformat(until) if until else datetime.fromisoformat(start) + timedelta(days=2)) < now
+    except ValueError:
+        return True
 
 
 def _when(raw: Any) -> datetime | None:
