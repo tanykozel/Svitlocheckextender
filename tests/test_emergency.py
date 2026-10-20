@@ -102,7 +102,7 @@ class AlertTests(unittest.TestCase):
     def test_new_emergency_is_announced_once_with_its_interval(self):
         self.power.records = [record(317818499, "1, 11, 12, 13")]
         self.assertEqual(self.check(), 1)
-        self.assertEqual(self.sent[-1][1], "⚡🔴 Нове аварійне відключення на твоїй адресі (с. Улянівка, вул. Молодіжна): "
+        self.assertEqual(self.sent[-1][1], "⚡🔴 Нове аварійне відключення на адресі (с. Улянівка, вул. Молодіжна): "
                                             "з 20.10 12:48 до 21.10 09:00.")
         self.assertEqual(self.check(10), 0, "the same emergency is not repeated")
 
