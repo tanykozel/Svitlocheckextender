@@ -119,7 +119,49 @@ class AlertTests(unittest.TestCase):
         self.power.records = []
         self.check(10)
         self.assertEqual(len(self.sent), 1, "no «завершено» message (owner, 20.10)")
+        self.check(24 * 60)  # past its end (21.10 09:00): forgotten
         self.assertEqual(self.state.subs["7"].em_sent, {})
+
+    def test_same_emergency_under_a_new_id_is_not_new_again(self):
+        # Owner's report 20.10 (с. Дубрівка, whole street): «Нове…» at 22:47, 22:58 and 23:08 for one emergency
+        for minutes, rid in ((0, 1), (10, 2), (20, 3)):
+            self.power.records = [record(rid, "12")]
+            self.check(minutes)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_emergency_missing_from_one_reply_is_not_new_again(self):
+        self.power.records = [record(1, "12")]
+        self.check()
+        self.power.records = []
+        self.check(10)
+        self.power.records = [record(1, "12")]
+        self.check(20)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_new_id_with_a_new_end_is_a_change(self):
+        self.power.records = [record(1, "12")]
+        self.check()
+        self.power.records = [record(2, "12", until="2026-10-21T08:00:00+00:00")]
+        self.check(10)
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("змінено: з 20.10 12:48 до 21.10 11:00.", self.sent[-1][1])
+        self.check(20)
+        self.assertEqual(len(self.sent), 2)
+
+    def test_whole_street_hears_once_about_identical_records(self):
+        self.state.subs["7"].house = ""
+        self.power.records = [record(1, "1, 3"), record(2, "5, 7")]  # same interval, other houses
+        self.check()
+        self.check(10)
+        self.assertEqual(len(self.sent), 1)
+
+    def test_a_really_new_emergency_is_still_announced(self):
+        self.power.records = [record(1, "12")]
+        self.check()
+        self.power.records = [record(1, "12"), record(2, "12", start="2026-10-20T11:00:00+00:00")]
+        self.check(10)
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("Нове", self.sent[-1][1])
 
     def test_other_houses_and_queue_outages_are_ignored(self):
         self.power.records = [record(1, "1, 13"), record(2, "12", sub_reason=2, koment="3.1")]
