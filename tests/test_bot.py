@@ -486,6 +486,10 @@ class DemoTests(unittest.TestCase):
 
 
 class MenuTests(unittest.TestCase):
+    def test_help_names_who_to_write_to(self):
+        from svitlo_notifier.bot import HELP
+        self.assertIn("✉️ Питання чи ідеї? Пиши @tkkateivan", HELP)
+
     def test_test_command_is_hidden_from_menu_and_help_but_still_works(self):
         from svitlo_notifier.bot import HELP, MENU
         self.assertNotIn("test", [command for command, _ in MENU])
