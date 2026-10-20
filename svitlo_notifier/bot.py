@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
+from .emergency import PowerOnClient, changed_text, emergencies, link_address, new_text
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, passed_events, plan,
                       schedule_text, summary)
 from .secure import chat_tag
@@ -309,6 +310,12 @@ class Subscription:
     # "home" / "business" when the house is listed for both with different queues and the person chose;
     # empty = household rows win (the usual case)
     kind: str = ""
+    # Emergency outages (owner, 20.10): the district name, the address's ids in ZTOE's emergency service
+    # ("otg|city|street", "-" = no exact match, "" = not linked yet) and what this person was already told.
+    rem: str = ""
+    em_link: str = ""
+    em_linked_at: str = ""
+    em_sent: dict[str, str] = field(default_factory=dict)  # emergency id -> its interval when announced
 
     def household(self) -> bool | None:
         return {"home": True, "business": False}.get(self.kind)
@@ -317,7 +324,8 @@ class Subscription:
         return {"queue": self.queue, "subqueue": self.subqueue, "label": self.label,
                 "lead_minutes": self.lead_minutes, "street_id": self.street_id, "house": self.house,
                 "checked_at": self.checked_at, "problem": self.problem, "alerts": self.alerts.to_dict(),
-                "bot_id": self.bot_id, "kind": self.kind}
+                "bot_id": self.bot_id, "kind": self.kind, "rem": self.rem, "em_link": self.em_link,
+                "em_linked_at": self.em_linked_at, "em_sent": self.em_sent}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "Subscription":
@@ -326,7 +334,9 @@ class Subscription:
                    State.from_dict(raw.get("alerts", {})), int(raw.get("lead_minutes", DEFAULT_LEAD)),
                    str(raw.get("street_id", "")), house,
                    str(raw.get("checked_at", "")), str(raw.get("problem", "")),
-                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None, str(raw.get("kind", "")))
+                   int(raw["bot_id"]) if raw.get("bot_id") is not None else None, str(raw.get("kind", "")),
+                   str(raw.get("rem", "")), str(raw.get("em_link", "")), str(raw.get("em_linked_at", "")),
+                   {str(k): str(v) for k, v in raw.get("em_sent", {}).items()})
 
 
 def label_without_house(label: str, house: str) -> str:
@@ -357,6 +367,7 @@ class BotState:
     # Discovery (owner, 16.10): free-text messages the bot did not understand, as [day, masked text].
     # No chat id, digits masked, at most DISCOVERY_KEEP texts for DISCOVERY_DAYS days; encrypted with the state.
     free_texts: list[list[str]] = field(default_factory=list)
+    emergency_at: str = ""  # last emergency-outage check (ISO)
 
     def switch_bot(self, bot_id: int) -> bool:
         """Adopt a new bot token. Returns True if the bot changed.
@@ -380,7 +391,7 @@ class BotState:
                 "subs": {k: v.to_dict() for k, v in self.subs.items()},
                 "sessions": self.sessions, "keyboards": self.keyboards,
                 "watch": self.watch, "watched_at": self.watched_at, "seen": self.seen, "history": self.history,
-                "free_texts": self.free_texts}
+                "free_texts": self.free_texts, "emergency_at": self.emergency_at}
 
     @classmethod
     def from_dict(cls, raw: dict) -> "BotState":
@@ -391,7 +402,7 @@ class BotState:
                 {k: dict(v) for k, v in raw.get("watch", {}).items()}, str(raw.get("watched_at", "")),
                 {str(k): str(v) for k, v in raw.get("seen", {}).items()},
                 {str(k): [[int(m), int(t)] for m, t in v] for k, v in raw.get("history", {}).items()},
-                [[str(d), str(t)] for d, t in raw.get("free_texts", [])])
+                [[str(d), str(t)] for d, t in raw.get("free_texts", [])], str(raw.get("emergency_at", "")))
 
 
 # --- discovery: what people ask in their own words ------------------------------------
@@ -456,7 +467,7 @@ HELP = (
     "🧹 Повідомлення, старші за 2 доби, я видаляю сама, щоб чат не засмічувався.\n"
     "💬 Якщо я не зрозуміла твоє повідомлення, я анонімно зберігаю його текст (без імені, цифри приховані) "
     "до 30 днів, щоб навчитися відповідати краще.\n"
-    "Аварійні відключення, на жаль, передбачити не можу.\n"
+    "⚡ Про аварійні відключення на твоїй адресі повідомлю, щойно Житомиробленерго їх опублікує.\n"
     f"Повний графік: {SCHEDULE_URL}"
 )
 
@@ -467,11 +478,14 @@ class Bot:
     def __init__(self, directory: Directory, send: Send, state: BotState,
                  unbutton: Unbutton = lambda _chat, _message: None,
                  delete: Callable[[int, int], bool] = lambda _chat, _message: False,
-                 show_choice: Callable[[int, int, str], None] | None = None) -> None:
+                 show_choice: Callable[[int, int, str], None] | None = None,
+                 emergency: "PowerOnClient | None" = None) -> None:
         self.dir = directory
         self._send = send
         self._unbutton = unbutton
         self._show_choice = show_choice
+        self.emergency = emergency  # ZTOE's emergency-outage service; None = emergency alerts off
+        self.emergency_every = timedelta(minutes=10)
         self._echo: dict[str, str] = {}  # chat -> «✅ official name» to put on top of the next message
         self._delete = delete
         self.state = state
@@ -940,11 +954,13 @@ class Bot:
         chat = str(chat_id)
         old = self.state.subs.get(chat)
         lead = old.lead_minutes if old else DEFAULT_LEAD
+        rem_id = str(self.state.sessions.get(chat, {}).get("rem", ""))
+        rem = next((name_of(r) for r in self._rems() if str(r.get("id")) == rem_id), "") if rem_id else ""
         # One address per chat: the new one replaces the old, with fresh alert history.
         self.state.subs[chat] = Subscription(queue, subqueue, label, lead_minutes=lead,
                                              street_id=street_id, house=house, kind=kind,
                                              checked_at=datetime.now(KYIV).isoformat(),
-                                             bot_id=self.state.bot_id)
+                                             bot_id=self.state.bot_id, rem=rem)
         self.state.sessions.pop(chat, None)
         self.stats["outcome:address_changed" if old else "outcome:subscribed"] += 1
         head = "✅ Адресу змінено" if old else "✅ Готово"
@@ -956,6 +972,68 @@ class Bot:
                            "скажу, скільки мене не буде, і повідомлю, якщо графік зміниться 💡\n\n"
                            "/schedule - графік · /setting - коли попереджати · /change - інша адреса · "
                            "/stop - відписатися", None)
+
+    def _rems(self) -> list[dict]:
+        try:
+            return self.dir.rems()
+        except ApiError:
+            return []
+
+    def check_emergencies(self, now: datetime) -> int:
+        """Emergency outages for subscribers' addresses (owner, 20.10). Tells a person about a new emergency at
+        their address, or when its interval changes; nothing when it ends. One request per subscribed street."""
+        if self.emergency is None:
+            return 0
+        if self.state.emergency_at and now - datetime.fromisoformat(self.state.emergency_at) < self.emergency_every:
+            return 0
+        self.state.emergency_at = now.isoformat()
+        by_link: dict[str, list | None] = {}
+        sent = 0
+        for chat, sub in list(self.state.subs.items()):
+            if not sub.street_id or not self._link_emergency(sub, now):
+                continue
+            if sub.em_link not in by_link:
+                try:
+                    by_link[sub.em_link] = emergencies(self.emergency.accidents(*sub.em_link.split("|")))
+                except ApiError as exc:
+                    self.stats["failure:ztoe_emergency"] += 1
+                    print(f"warning: emergency outages unavailable: {exc}")  # no address in logs
+                    by_link[sub.em_link] = None
+            found = by_link[sub.em_link]
+            if found is None:
+                continue
+            mine = [e for e in found if not sub.house or sub.house in {house_key(h) for h in e.houses}]
+            told = {}
+            for e in mine:
+                before = sub.em_sent.get(e.id)
+                told[e.id] = e.fingerprint()
+                if before == e.fingerprint():
+                    continue
+                text = (new_text if before is None else changed_text)(sub.label, e)
+                try:
+                    self.send(int(chat), text, None)
+                except Exception as exc:  # noqa: BLE001 - delivery problems are handled with the alerts
+                    print(f"warning: emergency alert to {chat_tag(chat)} failed: {type(exc).__name__}")
+                    told[e.id] = before or ""
+                    continue
+                sent += 1
+                self.stats["outcome:emergency_alert" if before is None else "outcome:emergency_changed"] += 1
+            sub.em_sent = {k: v for k, v in told.items() if v}  # an ended emergency is forgotten, not announced
+        return sent
+
+    def _link_emergency(self, sub: Subscription, now: datetime) -> bool:
+        """Find the address in the emergency service once (re-tried daily if it did not match)."""
+        if sub.em_link and sub.em_link != "-":
+            return True
+        if sub.em_linked_at and now - datetime.fromisoformat(sub.em_linked_at) < timedelta(days=1):
+            return False
+        city, _, street = sub.label.partition(", ")
+        try:
+            link = link_address(self.emergency, sub.rem, city, street) if street else ""
+        except ApiError:
+            return False  # try again at the next check
+        sub.em_link, sub.em_linked_at = link or "-", now.isoformat()
+        return bool(link)
 
     def status(self, chat_id: int) -> None:
         sub = self.state.subs.get(str(chat_id))
