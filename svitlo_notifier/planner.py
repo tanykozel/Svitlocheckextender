@@ -249,5 +249,5 @@ def summary(raw: list[dict], now: datetime, label: str = "") -> str:
         lines += [f"• {_clock(e.at, now)} - {_EVENT_UA[e.kind.value]}" for e in upcoming]
     else:
         lines.append("Змін за графіком далі немає.")
-    lines.append("(Аварійні відключення я не бачу - лише графік.)")
+    lines.append("(Це графік. Про аварійні відключення на твоїй адресі я повідомляю окремо.)")
     return "\n".join(lines)

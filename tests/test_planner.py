@@ -175,7 +175,7 @@ class PlannerTests(unittest.TestCase):
         self.assertTrue(messages[0].startswith("[Дім] "))
         text = summary(TODAY, at(9), "Дім")
         self.assertIn("Зараз за графіком: світла немає 🔴 (08:00–12:00)", text)
-        self.assertIn("Аварійні відключення я не бачу", text)
+        self.assertIn("Про аварійні відключення на твоїй адресі я повідомляю окремо", text)
         self.assertIn("• 12:00 - увімкнення 🟢", text)
 
 
