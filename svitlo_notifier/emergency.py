@@ -54,8 +54,14 @@ class PowerOnClient:
     def streets(self, city_id: int | str) -> list[dict]:
         return self._members(self._get("pw_streets", **{"pagination": "false", "city.id": city_id}))
 
-    def accidents(self, otg_id: int | str, city_id: int | str, street_id: int | str) -> list[dict]:
-        """Current outages on one street (a street rarely has more than a page)."""
+    def accidents(self, otg_id: int | str, city_id: int | str, street_ids: int | str) -> list[dict]:
+        """Current outages on a street (one request per street entry; a street rarely has more than a page)."""
+        items: list[dict] = []
+        for street_id in str(street_ids).split(","):
+            items += self._street_accidents(otg_id, city_id, street_id)
+        return items
+
+    def _street_accidents(self, otg_id: int | str, city_id: int | str, street_id: str) -> list[dict]:
         items: list[dict] = []
         for page in (1, 2, 3):
             data = self._get("pw_accidents", **{"page": page, "otg.id": otg_id, "city.id": city_id,
@@ -78,13 +84,18 @@ def street_kind(name: str) -> str:
 
 def plain(name: str) -> str:
     """«місто Житомир» = «Житомир», «вул. Лук'яненка» = «вул. Лукʼяненка»: compared without prefixes and case."""
-    name = name.lower().replace("’", "'").replace("ʼ", "'").replace("`", "'")
+    name = name.lower().replace("’", "'").replace("ʼ", "'").replace("`", "'").replace("‘", "'")
     name = re.sub(r"\s+", " ", name).strip()
     return _PREFIX.sub("", name).strip()
 
 
 def link_address(client: PowerOnClient, rem_name: str, city_name: str, street_name: str) -> str:
-    """'otg|city|street' ids in the emergency service, or '' when there is no exact, unambiguous match."""
+    """'otg|city|street[,street]' ids in the emergency service, or '' when there is no exact, unambiguous match.
+
+    The service lists some towns twice (Звягель, Сусли: one real entry, one nearly empty) and some streets twice
+    with different apostrophes (Лук`яненка / Лук'яненка): the town that has the street is taken, and every entry
+    of the same street is watched. A street found in two different towns is never guessed.
+    """
     otg_id: Any = ""
     if rem_name:
         rem = plain(rem_name).replace(" рем", "")
@@ -93,16 +104,18 @@ def link_address(client: PowerOnClient, rem_name: str, city_name: str, street_na
             return ""
         otg_id = otgs[0]["id"]
     cities = [c for c in client.cities(otg_id) if plain(str(c.get("name", ""))) == plain(city_name)]
-    if len(cities) != 1:
-        return ""  # unknown, or the same village name in several districts: never guess
-    city = cities[0]
-    same_name = [s for s in client.streets(city["id"]) if plain(str(s.get("name", ""))) == plain(street_name)]
-    # «вул.» and «пров» of the same name are different streets: the kind must match when both are known
-    streets = [s for s in same_name if street_kind(str(s.get("name", ""))) == street_kind(street_name)] or (
-        same_name if len(same_name) == 1 else [])
-    if len(streets) != 1:
-        return ""
-    return f"{otg_id}|{city['id']}|{streets[0]['id']}"
+    found = []
+    for city in cities[:4]:
+        same_name = [s for s in client.streets(city["id"]) if plain(str(s.get("name", ""))) == plain(street_name)]
+        # «вул.» and «пров» of the same name are different streets: the kind must match when both are known
+        streets = [s for s in same_name if street_kind(str(s.get("name", ""))) == street_kind(street_name)] or (
+            same_name if len({street_kind(str(s.get("name", ""))) for s in same_name}) == 1 else [])
+        if streets:
+            found.append((city, streets))
+    if len(found) != 1:
+        return ""  # unknown, or the same address in two towns: never guess
+    city, streets = found[0]
+    return f"{otg_id}|{city['id']}|{','.join(str(s['id']) for s in streets)}"
 
 
 @dataclass(frozen=True)
