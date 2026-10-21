@@ -475,6 +475,9 @@ HELP = (
 
 
 
+EMERGENCY_GRACE = timedelta(hours=12)  # how long past its end an unlisted emergency is still remembered
+
+
 class Bot:
     def __init__(self, directory: Directory, send: Send, state: BotState,
                  unbutton: Unbutton = lambda _chat, _message: None,
@@ -1031,7 +1034,11 @@ class Bot:
                 told[e.id] = fp
                 sent += 1
                 self.stats["outcome:emergency_alert" if before is None else "outcome:emergency_changed"] += 1
-            sub.em_sent = {k: v for k, v in told.items() if not emergency_over(v, now)}  # never announced as ended
+            # Forgotten only once ZTOE no longer lists it AND it is well past its expected end (owner's report 21.10:
+            # ZTOE kept listing an emergency after its «до 04:00», and it was announced as «Нове» every 10 min).
+            # Never announced as ended.
+            sub.em_sent = {k: v for k, v in told.items()
+                           if k in seen or not emergency_over(v, now - EMERGENCY_GRACE)}
         return sent
 
     def _link_emergency(self, sub: Subscription, now: datetime) -> bool:
