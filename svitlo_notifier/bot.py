@@ -18,7 +18,8 @@ from datetime import datetime, timedelta
 from typing import Callable, Protocol
 
 from .api import ApiError
-from .emergency import PowerOnClient, changed_text, emergencies, emergency_over, link_address, new_text
+from .emergency import (PowerOnClient, changed_text, emergencies, emergency_over, link_address, minute, new_text,
+                        told_emergencies)
 from .planner import (SCHEDULE_URL, Settings, State, by_day, describe_day, describe_event, passed_events, plan,
                       schedule_text, summary)
 from .secure import chat_tag
@@ -315,7 +316,7 @@ class Subscription:
     rem: str = ""
     em_link: str = ""
     em_linked_at: str = ""
-    em_sent: dict[str, str] = field(default_factory=dict)  # emergency id -> its interval when announced
+    em_sent: dict[str, str] = field(default_factory=dict)  # emergency start -> end times told, comma-separated
 
     def household(self) -> bool | None:
         return {"home": True, "business": False}.get(self.kind)
@@ -1007,38 +1008,33 @@ class Bot:
             if found is None:
                 continue
             mine = [e for e in found if not sub.house or sub.house in {house_key(h) for h in e.houses}]
-            # One message per emergency (owner's report 20.10: the same one came 3 times, every 10 min). ZTOE's
-            # reply is not stable: an emergency may come back under a new id, or be missing from one reply. So it
-            # is recognised by its start time too, and remembered until its end time, not until the next reply.
-            told = dict(sub.em_sent)
-            seen = {e.id for e in mine}
-            for e in mine:
-                fp = e.fingerprint()
-                before = told.get(e.id)
-                if before is None:
-                    renamed = [k for k, v in told.items() if k not in seen and v.split("|")[0] == fp.split("|")[0]]
-                    before = told[renamed[0]] if renamed else None
-                    for k in renamed:
-                        told.pop(k)
-                if before == fp or (before is None and fp in told.values()):  # nothing new to say
-                    told[e.id] = fp
+            # Duplicates are judged on our side, by the data the person sees, never by ZTOE's ids (owner, 21.10):
+            # an emergency is its start time; a message goes out only if this start, or this end time for it, was
+            # never told to this person. ZTOE's reply is not stable (new ids, gaps, overdue emergencies still listed).
+            known = told_emergencies(sub.em_sent)
+            latest: dict = {}
+            for e in mine:  # one emergency per start time: the latest end wins, so two records never take turns
+                start = minute(e.start)
+                if start not in latest or minute(e.until) > minute(latest[start].until):
+                    latest[start] = e
+            for start, e in sorted(latest.items()):
+                until = minute(e.until)
+                before = known.get(start)
+                if before is not None and until in before:  # already told: same data, or an end time it went back to
                     continue
                 text = (new_text if before is None else changed_text)(sub.label, e)
                 try:
                     self.send(int(chat), text, None)
                 except Exception as exc:  # noqa: BLE001 - delivery problems are handled with the alerts
                     print(f"warning: emergency alert to {chat_tag(chat)} failed: {type(exc).__name__}")
-                    if before is not None:
-                        told[e.id] = before
                     continue
-                told[e.id] = fp
+                known.setdefault(start, []).append(until)
                 sent += 1
                 self.stats["outcome:emergency_alert" if before is None else "outcome:emergency_changed"] += 1
-            # Forgotten only once ZTOE no longer lists it AND it is well past its expected end (owner's report 21.10:
-            # ZTOE kept listing an emergency after its «до 04:00», and it was announced as «Нове» every 10 min).
-            # Never announced as ended.
-            sub.em_sent = {k: v for k, v in told.items()
-                           if k in seen or not emergency_over(v, now - EMERGENCY_GRACE)}
+            # Forgotten only once ZTOE no longer lists it AND it is 12 h past its end (owner's report 21.10: ZTOE kept
+            # listing an emergency after its «до 04:00»). Never announced as ended.
+            sub.em_sent = {s: ",".join(u) for s, u in known.items()
+                           if s in latest or not emergency_over(f"{s}|{u[-1]}", now - EMERGENCY_GRACE)}
         return sent
 
     def _link_emergency(self, sub: Subscription, now: datetime) -> bool:

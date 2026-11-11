@@ -125,8 +125,32 @@ class Emergency:
     until: datetime | None
     houses: tuple[str, ...]
 
-    def fingerprint(self) -> str:
-        return f"{self.start.isoformat()}|{self.until.isoformat() if self.until else ''}"
+
+def minute(moment: datetime | None) -> str:
+    """The time as the person sees it (to the minute), '' when unknown: what duplicates are compared by."""
+    return moment.replace(second=0, microsecond=0).isoformat() if moment else ""
+
+
+def told_emergencies(em_sent: dict[str, str]) -> dict[str, list[str]]:
+    """start -> end times already told. Also reads the older form (ZTOE id -> "start|until", before 21.10), so
+    nobody is told again about an emergency they already heard of when this version starts."""
+    known: dict[str, list[str]] = {}
+    for key, value in em_sent.items():
+        if "|" in value:
+            start, _, until = value.partition("|")
+            start, until = _minute_text(start), _minute_text(until)
+            if until not in known.setdefault(start, []):
+                known[start].append(until)
+        else:
+            known.setdefault(key, []).extend(u for u in value.split(",") if u not in known.get(key, []))
+    return known
+
+
+def _minute_text(raw: str) -> str:
+    try:
+        return minute(datetime.fromisoformat(raw)) if raw else ""
+    except ValueError:
+        return raw
 
 
 def emergency_over(fingerprint: str, now: datetime) -> bool:

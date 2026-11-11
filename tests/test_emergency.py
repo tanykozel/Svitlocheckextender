@@ -172,6 +172,58 @@ class AlertTests(unittest.TestCase):
         self.check(10)
         self.assertEqual(len(self.sent), 1)
 
+    def test_the_whole_night_of_20_10_gives_two_messages(self):
+        # Owner, 21.10: «Нове» at 22:47, «змінено» at 23:18 (until 04:00) and nothing after that
+        self.now = datetime(2026, 10, 20, 22, 47, tzinfo=KYIV)
+        start = "2026-10-20T09:52:00+00:00"
+        self.power.records = [record(1, "12", start=start, until="2026-10-20T23:00:00+00:00")]
+        self.check()
+        for minutes, rid in ((11, 2), (21, 3)):  # new ids, same data
+            self.power.records = [record(rid, "12", start=start, until="2026-10-20T23:00:00+00:00")]
+            self.check(minutes)
+        self.power.records = [record(4, "12", start=start, until="2026-10-21T01:00:00+00:00")]
+        self.check(31)
+        for minutes in range(41, 8 * 60, 10):  # still listed long after 04:00, sometimes missing
+            self.power.records = [] if minutes % 70 == 1 else [record(minutes, "12", start=start,
+                                                                     until="2026-10-21T01:00:00+00:00")]
+            self.check(minutes)
+        self.assertEqual([t.split(" на адресі")[0] for _, t in self.sent],
+                         ["⚡🔴 Нове аварійне відключення", "⚡🔴 Аварійне відключення"])
+        self.assertIn("змінено: з 20.10 12:52 до 21.10 04:00.", self.sent[-1][1])
+
+    def test_end_time_going_back_is_not_announced_again(self):
+        self.power.records = [record(1, "12")]
+        self.check()
+        self.power.records = [record(1, "12", until="2026-10-21T08:00:00+00:00")]
+        self.check(10)
+        self.power.records = [record(1, "12")]  # back to the end already told
+        self.check(20)
+        self.assertEqual(len(self.sent), 2)
+
+    def test_two_records_with_one_start_do_not_take_turns(self):
+        self.state.subs["7"].house = ""
+        self.power.records = [record(1, "1"), record(2, "5", until="2026-10-21T08:00:00+00:00")]
+        self.check()
+        self.check(10)
+        self.power.records.reverse()
+        self.check(20)
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("до 21.10 11:00", self.sent[0][1], "the later end time is shown")
+
+    def test_a_new_start_time_is_a_new_emergency(self):
+        # Owner, 21.10: ZTOE does not move an emergency's start, it publishes a new emergency
+        self.power.records = [record(1, "12")]
+        self.check()
+        self.power.records = [record(1, "12", start="2026-10-20T09:50:00+00:00")]
+        self.check(10)
+        self.assertIn("Нове", self.sent[-1][1])
+
+    def test_memory_from_the_previous_version_is_kept(self):
+        self.state.subs["7"].em_sent = {"317818499": "2026-10-20T12:48:32+03:00|2026-10-21T09:00:00+03:00"}
+        self.power.records = [record(5, "12")]
+        self.check()
+        self.assertEqual(self.sent, [], "nobody hears again on deploy day")
+
     def test_a_really_new_emergency_is_still_announced(self):
         self.power.records = [record(1, "12")]
         self.check()

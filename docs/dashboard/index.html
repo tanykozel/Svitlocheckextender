@@ -92,7 +92,7 @@ a { color: var(--series-1); }
     <p class="note">Numbers only. Chat ids, names and addresses never leave the encrypted bot state.</p>
     <div class="tiles" id="sub-tiles"></div>
     <div class="grid2">
-      <div class="card"><h3>Subscribed and started, by day</h3><p class="note">Count at the end of each day (Kyiv time) · today = latest run</p>
+      <div class="card"><h3>Subscribed and started, by day</h3><p class="note">Bar = everyone who started the bot, at the end of each day (Kyiv time) · green line = joined that day · today = latest run</p>
         <div class="chart"><canvas id="c-subs"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-subs"></div></details></div>
       <div class="card"><h3>Subscribers by queue</h3><p class="note">Черга.підчерга, right now</p>
         <div class="chart"><canvas id="c-queue"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-queue"></div></details></div>
@@ -176,6 +176,11 @@ const REQUEST_NAMES = {
   "/status": "/status", "/setting": "/setting", "/settings": "/setting", "/stop": "/stop", "/help": "/help", "/test": "/test", "/demo": "/test",
   button: "Button taps", quiz_answer: "Typed address answers", unknown_text: "Text not understood",
   unknown_command: "Unknown commands", media: "Stickers / photos / voice", other: "Other",
+};
+const TOPIC_NAMES = {
+  schedule: "Schedule (графік, коли, завтра…)", power: "Power on / off (світло, вимкн…)", address: "Address (вулиця, будинок…)",
+  queue: "Queue (черга, підчерга)", problem: "Problem (не працює, помилка, чому…)", thanks: "Thanks (дякую, супер…)",
+  greeting: "Greeting (привіт, добрий день…)", other: "Other",
 };
 const FAILURES = {
   run_crashed: ["critical", "Bot run failed", "The run stopped with an error. Open the run log. «state key» in the log → SVITLO_STATE_KEY secret is missing or different; «rejected the bot token» → update TELEGRAM_BOT_TOKEN."],
@@ -314,12 +319,19 @@ function renderSubscribers() {
   okRuns.filter(r => Date.now() - r.date <= Math.max(rangeHours, 168) * 3600e3).forEach(r => byDay.set(dayKey(r.date), r));
   const days = [...byDay.entries()];
   const dayLabel = k => k.slice(8, 10) + "." + k.slice(5, 7);
+  // people who chose an address for the first time, per Kyiv day (all runs of the day, not just the last one)
+  const joinedByDay = new Map();
+  history.forEach(r => { const k = dayKey(r.date); joinedByDay.set(k, (joinedByDay.get(k) || 0) + (r.outcomes?.subscribed || 0)); });
+  const green = css("--good");
+  // Stacked: the two bars are parts of one whole (everyone who started the bot). The line has its own stack, so it is not added on top.
   chart("c-subs", "bar", days.map(([k]) => dayLabel(k)), [
-    { label: "Subscribed (address chosen)", data: days.map(([, r]) => r.subscribers), backgroundColor: css("--series-1") },
-    { label: "Started, no address yet", data: days.map(([, r]) => r.started_no_address ?? null), backgroundColor: css("--series-2") },
-  ]);
-  document.getElementById("t-subs").innerHTML = table(["Day", "Subscribed", "Started, no address", "Started in total"],
-    days.slice().reverse().map(([k, r]) => [dayLabel(k), r.subscribers, r.started_no_address ?? "–", r.started ?? "–"]));
+    { type: "line", label: "Joined that day", data: days.map(([k]) => joinedByDay.get(k) || 0), stack: "joined", order: 0,
+      borderColor: green, backgroundColor: green, borderWidth: 2, pointRadius: 3 },
+    { label: "Subscribed (address chosen)", data: days.map(([, r]) => r.subscribers), backgroundColor: css("--series-1"), stack: "people", order: 1 },
+    { label: "Started, no address yet", data: days.map(([, r]) => r.started_no_address ?? null), backgroundColor: css("--series-2"), stack: "people", order: 1 },
+  ], { stacked: true });
+  document.getElementById("t-subs").innerHTML = table(["Day", "Subscribed", "Started, no address", "Started in total", "Joined that day"],
+    days.slice().reverse().map(([k, r]) => [dayLabel(k), r.subscribers, r.started_no_address ?? "–", r.started ?? "–", joinedByDay.get(k) || 0]));
 
   const q = Object.entries(last?.by_queue || {}).sort();
   chart("c-queue", "bar", q.map(([k]) => k), [{ label: "Subscribers", data: q.map(([, v]) => v), backgroundColor: css("--series-1") }]);
@@ -357,8 +369,18 @@ function renderHealth() {
   const superseded = ranged.reduce((a, r) => a + (r.requests?.superseded || 0), 0);
   const reqRows = Object.entries(req).sort((a, b) => b[1] - a[1]);
   chart("c-req", "bar", reqRows.map(([k]) => k), [{ label: "Requests", data: reqRows.map(([, v]) => v), backgroundColor: css("--series-1") }], { horizontal: true, empty: "No requests in this range" });
+  // "Text not understood", split by rough topic (D8). One text can match several topics. The texts themselves
+  // never leave the server: the owner reads them with deploy/discovery.sh.
+  const topics = {};
+  ranged.forEach(r => Object.entries(r.freetext || {}).forEach(([k, v]) => { topics[k] = (topics[k] || 0) + v; }));
+  const topicRows = Object.entries(topics).sort((a, b) => b[1] - a[1]);
+  const unknown = req[REQUEST_NAMES.unknown_text] || 0;
   document.getElementById("t-req").innerHTML = table(["Type", "Count"], reqRows.map(([k, v]) => [esc(k), v])) +
-    `<p>${notFound} address answers were not found (typos). ${superseded} repeated taps were skipped (latest request wins).</p>`;
+    `<p>${notFound} address answers were not found (typos). ${superseded} repeated taps were skipped (latest request wins).</p>` +
+    `<h4 style="margin:16px 0 4px">Text not understood, by topic</h4>` +
+    (topicRows.length ? table(["Topic", "Texts"], topicRows.map(([k, v]) => [esc(TOPIC_NAMES[k] || k), v]))
+      : `<div class="empty">${unknown ? "Topics are recorded from the next bot version" : "No texts in this range"}</div>`) +
+    `<p class="note">Counts only: one text can match several topics. To read the texts (anonymous, digits hidden): <code>bash /opt/svitlo/deploy/discovery.sh</code> on the server.</p>`;
 
   renderWaiting(ranged);
 

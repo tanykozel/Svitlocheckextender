@@ -388,6 +388,8 @@ def metrics_record(bot: Bot, me: dict, processed: int, seconds: float) -> dict:
         "requests": groups["request"],
         "outcomes": groups["outcome"],
         "failures": groups["failure"],
+        # Discovery (D8): topics of the texts the bot did not understand, counts only. The texts stay on the server.
+        "freetext": groups.get("freetext", {}),
         "schedule_events": bot.schedule_events,
     }
 
