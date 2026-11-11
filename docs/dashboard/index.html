@@ -92,7 +92,7 @@ a { color: var(--series-1); }
     <p class="note">Numbers only. Chat ids, names and addresses never leave the encrypted bot state.</p>
     <div class="tiles" id="sub-tiles"></div>
     <div class="grid2">
-      <div class="card"><h3>Subscribed and started, by day</h3><p class="note">Count at the end of each day (Kyiv time) · today = latest run</p>
+      <div class="card"><h3>Subscribed and started, by day</h3><p class="note">Bar = everyone who started the bot, at the end of each day (Kyiv time) · green line = joined that day · today = latest run</p>
         <div class="chart"><canvas id="c-subs"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-subs"></div></details></div>
       <div class="card"><h3>Subscribers by queue</h3><p class="note">Черга.підчерга, right now</p>
         <div class="chart"><canvas id="c-queue"></canvas></div><details><summary>Table</summary><div class="table-wrap" id="t-queue"></div></details></div>
@@ -314,12 +314,19 @@ function renderSubscribers() {
   okRuns.filter(r => Date.now() - r.date <= Math.max(rangeHours, 168) * 3600e3).forEach(r => byDay.set(dayKey(r.date), r));
   const days = [...byDay.entries()];
   const dayLabel = k => k.slice(8, 10) + "." + k.slice(5, 7);
+  // people who chose an address for the first time, per Kyiv day (all runs of the day, not just the last one)
+  const joinedByDay = new Map();
+  history.forEach(r => { const k = dayKey(r.date); joinedByDay.set(k, (joinedByDay.get(k) || 0) + (r.outcomes?.subscribed || 0)); });
+  const green = css("--good");
+  // Stacked: the two bars are parts of one whole (everyone who started the bot). The line has its own stack, so it is not added on top.
   chart("c-subs", "bar", days.map(([k]) => dayLabel(k)), [
-    { label: "Subscribed (address chosen)", data: days.map(([, r]) => r.subscribers), backgroundColor: css("--series-1") },
-    { label: "Started, no address yet", data: days.map(([, r]) => r.started_no_address ?? null), backgroundColor: css("--series-2") },
-  ]);
-  document.getElementById("t-subs").innerHTML = table(["Day", "Subscribed", "Started, no address", "Started in total"],
-    days.slice().reverse().map(([k, r]) => [dayLabel(k), r.subscribers, r.started_no_address ?? "–", r.started ?? "–"]));
+    { type: "line", label: "Joined that day", data: days.map(([k]) => joinedByDay.get(k) || 0), stack: "joined", order: 0,
+      borderColor: green, backgroundColor: green, borderWidth: 2, pointRadius: 3 },
+    { label: "Subscribed (address chosen)", data: days.map(([, r]) => r.subscribers), backgroundColor: css("--series-1"), stack: "people", order: 1 },
+    { label: "Started, no address yet", data: days.map(([, r]) => r.started_no_address ?? null), backgroundColor: css("--series-2"), stack: "people", order: 1 },
+  ], { stacked: true });
+  document.getElementById("t-subs").innerHTML = table(["Day", "Subscribed", "Started, no address", "Started in total", "Joined that day"],
+    days.slice().reverse().map(([k, r]) => [dayLabel(k), r.subscribers, r.started_no_address ?? "–", r.started ?? "–", joinedByDay.get(k) || 0]));
 
   const q = Object.entries(last?.by_queue || {}).sort();
   chart("c-queue", "bar", q.map(([k]) => k), [{ label: "Subscribers", data: q.map(([, v]) => v), backgroundColor: css("--series-1") }]);
