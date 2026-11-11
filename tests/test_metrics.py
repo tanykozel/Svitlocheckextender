@@ -78,6 +78,15 @@ class DashboardCounterTests(unittest.TestCase):
             self.assertNotIn(secret, text)
 
 
+    def test_free_text_topics_are_counted_but_the_text_is_not_published(self):
+        self.bot.note_free_text("Коли завтра буде світло на вул. Центральна 5?", today="2026-11-11")
+        record = metrics_record(self.bot, {}, 1, 0)
+        self.assertEqual(record["freetext"], {"address": 1, "power": 1, "schedule": 1})
+        text = json.dumps(record, ensure_ascii=False)
+        for secret in ("Коли", "Центральна", "5?"):
+            self.assertNotIn(secret, text)
+
+
 class ReachableSubscribersAndReplyTimeTests(unittest.TestCase):
     """After a bot switch, only people the new bot can reach count as active; reply waits feed the SLA."""
 
